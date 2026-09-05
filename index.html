@@ -423,6 +423,25 @@
   .import-summary{font-size:12px;color:var(--ink-2);margin:14px 0 8px;}
   .preview-block + .preview-block{margin-top:14px;}
 
+  .attach-list-head{display:flex;align-items:center;justify-content:space-between;margin-top:12px;}
+  .attach-list-head span{font-size:10.5px;font-weight:700;color:var(--ink-3);text-transform:uppercase;letter-spacing:.05em;}
+  .attach-list-head button{background:none;border:none;color:var(--accent);font-size:12px;font-weight:600;cursor:pointer;padding:0;}
+  .attach-list-head button:hover{text-decoration:underline;}
+  .attach-list{display:flex;flex-direction:column;gap:6px;margin-top:8px;}
+  .attach-row{
+    display:flex;align-items:center;gap:10px;padding:7px 10px;
+    border:1px solid var(--border);border-radius:6px;font-size:12px;background:var(--surface);
+  }
+  .attach-row.is-error{border-color:var(--crit);background:var(--crit-bg);}
+  .attach-row .swatch{width:8px;height:8px;border-radius:2px;flex:0 0 8px;background:var(--ink-3);}
+  .attach-row .name{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:600;}
+  .attach-row .meta{color:var(--ink-2);white-space:nowrap;font-size:11.5px;}
+  .attach-row.is-error .meta{color:var(--crit);}
+  .attach-row .remove-btn{background:none;border:none;color:var(--ink-3);cursor:pointer;font-size:16px;line-height:1;padding:2px 3px;flex:0 0 auto;}
+  .attach-row .remove-btn:hover{color:var(--crit);}
+
+  .btn-lock{width:14px;height:14px;flex:0 0 14px;}
+
   @media (max-width:900px){
     .chart-row{grid-template-columns:1fr;}
     .kpi-strip{grid-template-columns:repeat(3,1fr);}
@@ -598,6 +617,13 @@
         <input type="file" id="file-input" accept=".kmz,.kml" multiple style="display:none;">
       </div>
       <div id="import-warning" class="banner warn" style="display:none;border-radius:6px;margin-top:12px;"></div>
+      <div id="attach-block" style="display:none;">
+        <div class="attach-list-head">
+          <span id="attach-count">0 arquivos anexados</span>
+          <button id="attach-clear-all">Remover todos</button>
+        </div>
+        <div class="attach-list" id="attach-list"></div>
+      </div>
       <div id="import-preview" style="display:none;">
         <div class="import-summary" id="preview-summary"></div>
         <div class="preview-block">
@@ -622,7 +648,13 @@
     </div>
     <div class="modal-foot">
       <button class="btn btn-secondary" id="import-cancel">Cancelar</button>
-      <button class="btn btn-primary" id="import-confirm" disabled>Confirmar importa&ccedil;&atilde;o</button>
+      <button class="btn btn-primary" id="import-confirm" disabled title="Anexe um arquivo .kmz ou .kml v&aacute;lido para importar.">
+        <svg class="btn-lock" id="import-lock-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round">
+          <rect x="3" y="7.5" width="10" height="6.5" rx="1.5"></rect>
+          <path id="import-lock-shackle" d="M5 7.5V5.2a3 3 0 0 1 6 0V7.5"></path>
+        </svg>
+        Confirmar importa&ccedil;&atilde;o
+      </button>
     </div>
   </div>
 </div>
@@ -1024,6 +1056,33 @@
     renderMap();
   });
 
+  var POPUP_FONT = "font-family:Calibri,'Segoe UI',Helvetica,Arial,sans-serif;";
+  function trechoPopupHtml(t){
+    var s = computeStatus(t);
+    var metros = Math.round(t.km * 1000);
+    return '<div style="' + POPUP_FONT + 'font-size:12.5px;line-height:1.5;min-width:190px;">' +
+      '<div style="font-weight:700;font-size:13px;margin-bottom:4px;">' + esc(t.nome) + '</div>' +
+      '<div><strong>Tipo:</strong> ' + esc(t.tipo) + '</div>' +
+      '<div><strong>UF / Pra&ccedil;a:</strong> ' + esc(t.uf || '—') + ' / ' + esc(t.praca || '—') + '</div>' +
+      '<div><strong>Extens&atilde;o:</strong> ' + fmtKm(t.km) + ' km &middot; ' + metros.toLocaleString('pt-BR') + ' m</div>' +
+      '<div><strong>Ciclo:</strong> ' + t.cicloDias + ' dias</div>' +
+      '<div><strong>Status:</strong> ' + esc(s) + '</div>' +
+      '<div><strong>&Uacute;ltima preventiva:</strong> ' + (t.ultimaPrevencao ? fmtDateBR(t.ultimaPrevencao) : '—') + '</div>' +
+      (t.batchId ? ('<div><strong>Origem:</strong> ' + esc(batchLabel(t.batchId)) + '</div>') : '') +
+    '</div>';
+  }
+  function markerPopupHtml(m){
+    var hasCoords = m.lat != null && m.lon != null;
+    var directionsUrl = hasCoords ? ('https://www.google.com/maps/dir/?api=1&destination=' + m.lat + ',' + m.lon) : null;
+    return '<div style="' + POPUP_FONT + 'font-size:12.5px;line-height:1.5;min-width:170px;">' +
+      '<div style="font-weight:700;font-size:13px;margin-bottom:4px;">' + esc(m.nome) + '</div>' +
+      '<div><strong>Elemento:</strong> ' + esc(m.elemento) + '</div>' +
+      '<div><strong>UF / Pra&ccedil;a:</strong> ' + esc(m.uf || '—') + ' / ' + esc(m.praca || '—') + '</div>' +
+      (m.batchId ? ('<div><strong>Origem:</strong> ' + esc(batchLabel(m.batchId)) + '</div>') : '') +
+      (hasCoords ? ('<div style="margin-top:6px;"><a href="' + directionsUrl + '" target="_blank" rel="noopener" style="color:#1476C9;font-weight:700;text-decoration:none;">Como chegar →</a></div>') : '') +
+    '</div>';
+  }
+
   function renderMap(){
     document.getElementById('map-summary').textContent = state.trechos.length + ' trechos · ' + state.marcadores.length + ' marcadores';
     var legendStatus = document.getElementById('legend-status');
@@ -1058,6 +1117,7 @@
       var color = mapMode === 'arquivo' ? batchColor(t.batchId) : statusColor(computeStatus(t));
       var poly = L.polyline(t.geo, {color: color, weight: 4, opacity: 0.9, lineCap: 'round'});
       poly.bindTooltip(esc(t.nome) + ' · ' + fmtKm(t.km) + ' km · ' + computeStatus(t));
+      poly.bindPopup(trechoPopupHtml(t));
       poly.addTo(trechoLayer);
       t.geo.forEach(function(pt){ bounds.push(pt); });
     });
@@ -1068,6 +1128,7 @@
       var color = mapMode === 'arquivo' ? batchColor(m.batchId) : elColorVar[m.elemento];
       var circle = L.circleMarker([m.lat, m.lon], {radius: 6, color: '#fff', weight: 2, fillColor: color, fillOpacity: 1});
       circle.bindTooltip('<span class="marker-plate" style="background:' + color + '">' + m.elemento + '</span>', {permanent: true, direction: 'right', offset: [6, 0], className: 'plate-tooltip'});
+      circle.bindPopup(markerPopupHtml(m));
       circle.addTo(markerLayer);
       bounds.push([m.lat, m.lon]);
     });
@@ -1170,19 +1231,36 @@
   var dropzone = document.getElementById('dropzone');
   var fileInput = document.getElementById('file-input');
   var warningEl = document.getElementById('import-warning');
+  var attachBlock = document.getElementById('attach-block');
+  var attachListEl = document.getElementById('attach-list');
+  var attachCountEl = document.getElementById('attach-count');
   var previewEl = document.getElementById('import-preview');
   var previewSummaryEl = document.getElementById('preview-summary');
   var previewTrechosBody = document.getElementById('preview-trechos-body');
   var previewMarcadoresBody = document.getElementById('preview-marcadores-body');
   var confirmBtn = document.getElementById('import-confirm');
-  var pending = null;
+  var lockShackle = document.getElementById('import-lock-shackle');
+  var attached = [];      // {id, file, status:'pending'|'ok'|'error', message, trechos, marcadores, ignorados, batchId, color}
+  var pending = null;     // aggregated {trechos, marcadores, ignorados, batches} built from `attached`, edited in the preview table
+  var colorCounter = 0;
+  var attachUid = 0;
+
+  function nextColor(){ var c = BATCH_PALETTE[(state.batches.length + colorCounter) % BATCH_PALETTE.length]; colorCounter++; return c; }
+  function fmtBytes(n){
+    if(n < 1024) return n + ' B';
+    if(n < 1024 * 1024) return (n / 1024).toFixed(1) + ' KB';
+    return (n / 1024 / 1024).toFixed(1) + ' MB';
+  }
+  function extOf(name){ var m = /\.[^.]+$/.exec(name); return m ? m[0].toLowerCase() : ''; }
 
   function openImport(){
-    pending = null;
+    attached = []; pending = null; colorCounter = 0;
     warningEl.style.display = 'none';
     previewEl.style.display = 'none';
-    confirmBtn.disabled = true;
     fileInput.value = '';
+    dropzone.classList.remove('is-drag');
+    renderAttachList();
+    updateLock();
     overlay.classList.remove('is-hidden');
   }
   function closeImport(){ overlay.classList.add('is-hidden'); }
@@ -1190,6 +1268,9 @@
   document.getElementById('btn-import-2').addEventListener('click', openImport);
   document.getElementById('import-close').addEventListener('click', closeImport);
   document.getElementById('import-cancel').addEventListener('click', closeImport);
+  document.getElementById('attach-clear-all').addEventListener('click', function(){
+    attached = []; renderAttachList(); rebuildPending(); updateLock();
+  });
   overlay.addEventListener('click', function(e){ if(e.target === overlay) closeImport(); });
 
   dropzone.addEventListener('click', function(){ fileInput.click(); });
@@ -1200,67 +1281,121 @@
   ['dragleave','drop'].forEach(function(ev){
     dropzone.addEventListener(ev, function(e){ e.preventDefault(); dropzone.classList.remove('is-drag'); });
   });
-  dropzone.addEventListener('drop', function(e){ handleFiles(e.dataTransfer.files); });
-  fileInput.addEventListener('change', function(){ handleFiles(fileInput.files); });
+  dropzone.addEventListener('drop', function(e){ addFiles(e.dataTransfer.files); });
+  fileInput.addEventListener('change', function(){ addFiles(fileInput.files); fileInput.value = ''; });
 
   function showWarning(msg){ warningEl.style.display = 'flex'; warningEl.innerHTML = '<span class="bdot"></span>' + msg; }
 
-  function handleFiles(fileList){
+  /* ---- trava: só é possível anexar formatos aceitos e sem duplicar; o botão
+     de confirmar só destrava quando existe ao menos 1 arquivo lido com sucesso
+     e com trechos/marcadores válidos dentro dele ---- */
+  function addFiles(fileList){
     var files = Array.prototype.slice.call(fileList || []);
     if(!files.length) return;
-    warningEl.style.display = 'none';
-    var allTrechos = [], allMarcadores = [], allIgnorados = 0, newBatches = [];
-    var jobs = files.map(function(file, idx){
-      var lower = file.name.toLowerCase();
-      var batchId = 'b' + Date.now() + '-' + idx;
-      var color = BATCH_PALETTE[(state.batches.length + newBatches.length) % BATCH_PALETTE.length];
-      newBatches.push({id: batchId, nome: file.name, cor: color});
-
-      if(lower.endsWith('.kmz')){
-        if(typeof JSZip === 'undefined'){
-          showWarning('Não foi possível carregar o suporte a .kmz (JSZip). Tente importar um .kml puro, ou verifique bloqueios de rede/antivírus.');
-          return Promise.resolve();
-        }
-        return JSZip.loadAsync(file).then(function(zip){
-          var entryName = Object.keys(zip.files).filter(function(n){ return n.toLowerCase().endsWith('.kml'); })[0];
-          if(!entryName){ showWarning('O arquivo "' + esc(file.name) + '" não contém um .kml válido.'); return; }
-          return zip.files[entryName].async('string').then(function(text){
-            var xmlDoc = new DOMParser().parseFromString(text, 'text/xml');
-            var res = parseKmlDoc(xmlDoc, batchId, idx);
-            allTrechos = allTrechos.concat(res.trechos);
-            allMarcadores = allMarcadores.concat(res.marcadores);
-            allIgnorados += res.ignorados;
-          });
-        }).catch(function(){ showWarning('Não foi possível ler "' + esc(file.name) + '" como .kmz.'); });
-      } else if(lower.endsWith('.kml')){
-        return file.text().then(function(text){
-          var xmlDoc = new DOMParser().parseFromString(text, 'text/xml');
-          var res = parseKmlDoc(xmlDoc, batchId, idx);
-          allTrechos = allTrechos.concat(res.trechos);
-          allMarcadores = allMarcadores.concat(res.marcadores);
-          allIgnorados += res.ignorados;
-        }).catch(function(){ showWarning('Não foi possível ler "' + esc(file.name) + '" como .kml.'); });
-      } else {
-        showWarning('Formato não suportado: "' + esc(file.name) + '" (use .kmz ou .kml).');
-        return Promise.resolve();
-      }
-    });
-
-    Promise.all(jobs).then(function(){
-      if(!allTrechos.length && !allMarcadores.length){
-        if(warningEl.style.display !== 'flex'){
-          showWarning('Nenhum trecho ou marcador válido foi encontrado nesses arquivos.' + (allIgnorados ? (' ' + allIgnorados + ' ponto(s) ignorado(s) por não serem CEO/CTO/CTOE.') : ''));
-        }
+    files.forEach(function(file){
+      var ext = extOf(file.name);
+      var id = 'a' + (attachUid++);
+      if(ext !== '.kmz' && ext !== '.kml'){
+        attached.push({id: id, file: file, status: 'error', message: 'Formato não suportado — use .kmz ou .kml'});
         return;
       }
-      pending = {trechos: allTrechos, marcadores: allMarcadores, ignorados: allIgnorados, batches: newBatches};
-      renderPreview();
+      var dup = attached.some(function(a){ return a.file.name === file.name && a.file.size === file.size; });
+      if(dup){
+        attached.push({id: id, file: file, status: 'error', message: 'Já anexado'});
+        return;
+      }
+      var entry = {id: id, file: file, status: 'pending', message: 'Lendo…', color: nextColor(), batchId: 'b' + Date.now() + '-' + id};
+      attached.push(entry);
+      readEntry(entry);
     });
+    renderAttachList();
+    updateLock();
+  }
+
+  function readEntry(entry){
+    var ext = extOf(entry.file.name);
+    var textPromise;
+    if(ext === '.kmz'){
+      if(typeof JSZip === 'undefined'){
+        entry.status = 'error'; entry.message = 'Suporte a .kmz (JSZip) não carregou — tente um .kml puro';
+        renderAttachList(); updateLock(); return;
+      }
+      textPromise = JSZip.loadAsync(entry.file).then(function(zip){
+        var entryName = Object.keys(zip.files).filter(function(n){ return n.toLowerCase().endsWith('.kml'); })[0];
+        if(!entryName){ throw new Error('sem .kml dentro do .kmz'); }
+        return zip.files[entryName].async('string');
+      });
+    } else {
+      textPromise = entry.file.text();
+    }
+    textPromise.then(function(text){
+      var xmlDoc = new DOMParser().parseFromString(text, 'text/xml');
+      var res = parseKmlDoc(xmlDoc, entry.batchId, entry.id);
+      entry.trechos = res.trechos; entry.marcadores = res.marcadores; entry.ignorados = res.ignorados;
+      if(!res.trechos.length && !res.marcadores.length){
+        entry.status = 'error';
+        entry.message = res.ignorados ? (res.ignorados + ' ponto(s) ignorado(s), nenhum CEO/CTO/CTOE') : 'Nenhum trecho ou marcador encontrado';
+      } else {
+        entry.status = 'ok';
+        entry.message = res.trechos.length + ' trecho(s) · ' + res.marcadores.length + ' marcador(es)' + (res.ignorados ? (' · ' + res.ignorados + ' ignorado(s)') : '');
+      }
+    }).catch(function(){
+      entry.status = 'error'; entry.message = 'Não foi possível ler este arquivo';
+    }).then(function(){
+      renderAttachList(); rebuildPending(); updateLock();
+    });
+  }
+
+  function removeEntry(id){
+    attached = attached.filter(function(a){ return a.id !== id; });
+    renderAttachList(); rebuildPending(); updateLock();
+  }
+
+  function renderAttachList(){
+    attachBlock.style.display = attached.length ? 'block' : 'none';
+    attachCountEl.textContent = attached.length + (attached.length === 1 ? ' arquivo anexado' : ' arquivos anexados');
+    attachListEl.innerHTML = attached.map(function(a){
+      var isError = a.status === 'error';
+      var swatch = isError ? 'background:var(--crit)' : 'background:' + (a.color || 'var(--ink-3)');
+      return '<div class="attach-row' + (isError ? ' is-error' : '') + '">' +
+        '<span class="swatch" style="' + swatch + '"></span>' +
+        '<span class="name" title="' + esc(a.file.name) + '">' + esc(a.file.name) + '</span>' +
+        '<span class="meta">' + fmtBytes(a.file.size) + '</span>' +
+        '<span class="meta">' + esc(a.message || (a.status === 'pending' ? 'Lendo…' : '')) + '</span>' +
+        '<button class="remove-btn" data-remove="' + a.id + '" aria-label="Remover ' + esc(a.file.name) + '" title="Apagar arquivo anexado">&times;</button>' +
+      '</div>';
+    }).join('');
+    attachListEl.querySelectorAll('[data-remove]').forEach(function(btn){
+      btn.addEventListener('click', function(){ removeEntry(btn.dataset.remove); });
+    });
+  }
+
+  function updateLock(){
+    var hasPending = attached.some(function(a){ return a.status === 'pending'; });
+    var hasValid = attached.some(function(a){ return a.status === 'ok'; });
+    var locked = hasPending || !hasValid;
+    confirmBtn.disabled = locked;
+    lockShackle.setAttribute('d', locked ? 'M5 7.5V5.2a3 3 0 0 1 6 0V7.5' : 'M5 7.5V5.2a3 3 0 0 1 5.6-1.7');
+    if(hasPending) confirmBtn.title = 'Aguardando leitura dos arquivos…';
+    else if(!attached.length) confirmBtn.title = 'Anexe um arquivo .kmz ou .kml válido para importar.';
+    else if(!hasValid) confirmBtn.title = 'Nenhum arquivo anexado é válido — remova-os ou anexe outro.';
+    else confirmBtn.title = 'Pronto para importar.';
+  }
+
+  function rebuildPending(){
+    var ok = attached.filter(function(a){ return a.status === 'ok'; });
+    if(!ok.length){ pending = null; previewEl.style.display = 'none'; return; }
+    pending = {
+      trechos: ok.reduce(function(acc, a){ return acc.concat(a.trechos); }, []),
+      marcadores: ok.reduce(function(acc, a){ return acc.concat(a.marcadores); }, []),
+      ignorados: ok.reduce(function(acc, a){ return acc + a.ignorados; }, 0),
+      batches: ok.map(function(a){ return {id: a.batchId, nome: a.file.name, cor: a.color}; })
+    };
+    renderPreview();
   }
 
   function renderPreview(){
     previewEl.style.display = 'block';
-    confirmBtn.disabled = false;
     previewSummaryEl.textContent = pending.trechos.length + ' trecho(s) e ' + pending.marcadores.length + ' marcador(es) detectados' +
       (pending.ignorados ? (' · ' + pending.ignorados + ' ponto(s) ignorado(s) (não identificados como CEO/CTO/CTOE)') : '') +
       '. Revise e corrija os campos abaixo antes de confirmar.';
@@ -1304,7 +1439,7 @@
   }
 
   confirmBtn.addEventListener('click', function(){
-    if(!pending) return;
+    if(confirmBtn.disabled || !pending) return;
     state.batches = state.batches.concat(pending.batches);
     state.trechos = state.trechos.concat(pending.trechos);
     state.marcadores = state.marcadores.concat(pending.marcadores);
