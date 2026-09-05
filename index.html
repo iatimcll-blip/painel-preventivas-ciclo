@@ -610,7 +610,7 @@
             <input type="text" id="basemap-key-input" placeholder="Cole a chave da API aqui&hellip;" autocomplete="off" spellcheck="false">
             <button class="btn btn-primary" id="basemap-key-save" style="padding:6px 12px;font-size:12px;">Usar Google Maps</button>
           </div>
-          <p class="basemap-panel-note">A chave fica salva s&oacute; no seu navegador (localStorage) e nunca &eacute; enviada para n&oacute;s &mdash; mas fica vis&iacute;vel nas requisi&ccedil;&otilde;es do navegador, ent&atilde;o <strong>restrinja-a por dom&iacute;nio</strong> (HTTP referrer) no Google Cloud Console para este site.</p>
+          <p class="basemap-panel-note">A chave fica salva s&oacute; no seu navegador (localStorage) e nunca &eacute; enviada para n&oacute;s &mdash; mas fica vis&iacute;vel nas requisi&ccedil;&otilde;es do navegador, ent&atilde;o <strong>restrinja-a por dom&iacute;nio</strong> (HTTP referrer) no Google Cloud Console para este site. Essa mesma chave tamb&eacute;m &eacute; usada para mostrar a foto do Street View ao clicar num marcador CEO/CTO/CTOE &mdash; para isso, ative tamb&eacute;m a <strong>Street View Static API</strong> no seu projeto do Google Cloud.</p>
           <div id="basemap-error" class="basemap-panel-error" style="display:none;"></div>
           <div class="basemap-panel-row" style="justify-content:flex-end;">
             <button class="btn btn-secondary" id="basemap-use-osm" style="padding:6px 12px;font-size:12px;">Usar OpenStreetMap</button>
@@ -1191,12 +1191,24 @@
   function markerPopupHtml(m){
     var hasCoords = m.lat != null && m.lon != null;
     var directionsUrl = hasCoords ? ('https://www.google.com/maps/dir/?api=1&destination=' + m.lat + ',' + m.lon) : null;
-    return '<div style="' + POPUP_FONT + 'font-size:12.5px;line-height:1.5;min-width:170px;">' +
+    var streetViewUrl = hasCoords ? ('https://www.google.com/maps/@?api=1&map_action=pano&viewpoint=' + m.lat + ',' + m.lon) : null;
+    var gKey = null;
+    try{ gKey = localStorage.getItem(GMAPS_KEY_STORAGE); }catch(e){}
+    var thumbHtml = '';
+    if(hasCoords && gKey){
+      var thumbUrl = 'https://maps.googleapis.com/maps/api/streetview?size=320x160&location=' + m.lat + ',' + m.lon + '&fov=80&key=' + encodeURIComponent(gKey);
+      thumbHtml = '<img src="' + thumbUrl + '" alt="Street View de ' + esc(m.nome) + '" loading="lazy" onerror="this.style.display=\'none\'" style="width:100%;border-radius:6px;margin:8px 0 2px;display:block;">';
+    }
+    return '<div style="' + POPUP_FONT + 'font-size:12.5px;line-height:1.5;min-width:190px;max-width:230px;">' +
       '<div style="font-weight:700;font-size:13px;margin-bottom:4px;">' + esc(m.nome) + '</div>' +
       '<div><strong>Elemento:</strong> ' + esc(m.elemento) + '</div>' +
       '<div><strong>UF / Pra&ccedil;a:</strong> ' + esc(m.uf || '—') + ' / ' + esc(m.praca || '—') + '</div>' +
       (m.batchId ? ('<div><strong>Origem:</strong> ' + esc(batchLabel(m.batchId)) + '</div>') : '') +
-      (hasCoords ? ('<div style="margin-top:6px;"><a href="' + directionsUrl + '" target="_blank" rel="noopener" style="color:#1476C9;font-weight:700;text-decoration:none;">Como chegar →</a></div>') : '') +
+      thumbHtml +
+      (hasCoords ? ('<div style="margin-top:6px;display:flex;gap:14px;">' +
+        '<a href="' + directionsUrl + '" target="_blank" rel="noopener" style="color:#1476C9;font-weight:700;text-decoration:none;">Como chegar →</a>' +
+        '<a href="' + streetViewUrl + '" target="_blank" rel="noopener" style="color:#1476C9;font-weight:700;text-decoration:none;">Street View →</a>' +
+      '</div>') : '') +
     '</div>';
   }
 
@@ -1245,7 +1257,7 @@
       var color = mapMode === 'arquivo' ? batchColor(m.batchId) : elColorVar[m.elemento];
       var circle = L.circleMarker([m.lat, m.lon], {radius: 6, color: '#fff', weight: 2, fillColor: color, fillOpacity: 1});
       circle.bindTooltip('<span class="marker-plate" style="background:' + color + '">' + m.elemento + '</span>', {permanent: true, direction: 'right', offset: [6, 0], className: 'plate-tooltip'});
-      circle.bindPopup(markerPopupHtml(m));
+      circle.bindPopup(markerPopupHtml(m), {maxWidth: 260});
       circle.addTo(markerLayer);
       bounds.push([m.lat, m.lon]);
     });
