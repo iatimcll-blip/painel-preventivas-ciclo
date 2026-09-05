@@ -355,6 +355,21 @@
   }
   .segmented button:first-child{border-left:none;}
   .segmented button.is-active{background:var(--accent);color:var(--accent-ink);}
+  .basemap-panel{border-bottom:1px solid var(--border);background:var(--surface-2);}
+  .basemap-panel.is-hidden{display:none;}
+  .basemap-panel-inner{padding:14px 20px;max-width:560px;}
+  .basemap-panel-inner p{margin:0 0 10px;font-size:12px;color:var(--ink-2);line-height:1.5;}
+  .basemap-panel-inner p a{color:var(--accent);}
+  .basemap-panel-row{display:flex;gap:8px;margin-bottom:10px;}
+  .basemap-panel-row input{
+    flex:1;background:var(--surface);border:1px solid var(--border);border-radius:6px;
+    color:var(--ink);font-size:12.5px;padding:7px 10px;font-family:inherit;
+  }
+  .basemap-panel-note{font-size:11px;color:var(--ink-3);}
+  .basemap-panel-error{
+    font-size:12px;color:var(--crit);background:var(--crit-bg);border-radius:6px;
+    padding:8px 10px;margin-bottom:10px;
+  }
   .map-stage{flex:1;position:relative;min-height:520px;background:var(--surface-2);overflow:hidden;}
   #leaflet-map{position:absolute;inset:0;background:var(--surface-2);}
   .leaflet-container{font-family:inherit;}
@@ -583,7 +598,25 @@
           <button class="is-active" data-mode="status">Colorir por status</button>
           <button data-mode="arquivo">Colorir por arquivo KMZ</button>
         </div>
-        <span class="sec-note" id="map-summary"></span>
+        <div style="display:flex;align-items:center;gap:12px;">
+          <span class="sec-note" id="map-summary"></span>
+          <button class="btn btn-secondary" id="basemap-btn" style="padding:5px 10px;font-size:11.5px;">Mapa base: OpenStreetMap</button>
+        </div>
+      </div>
+      <div class="basemap-panel is-hidden" id="basemap-panel">
+        <div class="basemap-panel-inner">
+          <p>Para usar o <strong>Google Maps</strong> como mapa base, cole abaixo uma chave de API do Google Maps JavaScript API (criada no <a href="https://console.cloud.google.com/google/maps-apis" target="_blank" rel="noopener">Google Cloud Console</a>, com faturamento ativado).</p>
+          <div class="basemap-panel-row">
+            <input type="text" id="basemap-key-input" placeholder="Cole a chave da API aqui&hellip;" autocomplete="off" spellcheck="false">
+            <button class="btn btn-primary" id="basemap-key-save" style="padding:6px 12px;font-size:12px;">Usar Google Maps</button>
+          </div>
+          <p class="basemap-panel-note">A chave fica salva s&oacute; no seu navegador (localStorage) e nunca &eacute; enviada para n&oacute;s &mdash; mas fica vis&iacute;vel nas requisi&ccedil;&otilde;es do navegador, ent&atilde;o <strong>restrinja-a por dom&iacute;nio</strong> (HTTP referrer) no Google Cloud Console para este site.</p>
+          <div id="basemap-error" class="basemap-panel-error" style="display:none;"></div>
+          <div class="basemap-panel-row" style="justify-content:flex-end;">
+            <button class="btn btn-secondary" id="basemap-use-osm" style="padding:6px 12px;font-size:12px;">Usar OpenStreetMap</button>
+            <button class="btn btn-secondary" id="basemap-close" style="padding:6px 12px;font-size:12px;">Fechar</button>
+          </div>
+        </div>
       </div>
       <div class="map-stage">
         <div id="leaflet-map"></div>
@@ -660,6 +693,7 @@
 </div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/leaflet.gridlayer.googlemutant@0.16.0/dist/Leaflet.GoogleMutant.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 <script>
 (function(){
@@ -1029,22 +1063,101 @@
   }
 
   /* ---------------- map ---------------- */
-  var map = null, trechoLayer = null, markerLayer = null, mapMode = 'status';
+  var GMAPS_KEY_STORAGE = 'jarvis-google-maps-key';
+  var map = null, trechoLayer = null, markerLayer = null, baseLayer = null, mapMode = 'status';
   var mapAvailable = typeof L !== 'undefined';
+  var basemapBtn = document.getElementById('basemap-btn');
+  var basemapPanel = document.getElementById('basemap-panel');
+  var basemapKeyInput = document.getElementById('basemap-key-input');
+  var basemapError = document.getElementById('basemap-error');
+
   if(mapAvailable){
     try{
       map = L.map('leaflet-map', {scrollWheelZoom:true}).setView([-3.4, -49.5], 5);
-      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-        maxZoom: 18,
-        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
-      }).addTo(map);
       trechoLayer = L.layerGroup().addTo(map);
       markerLayer = L.layerGroup().addTo(map);
+      var savedKey = null;
+      try{ savedKey = localStorage.getItem(GMAPS_KEY_STORAGE); }catch(e){}
+      if(savedKey){ useGoogleBasemap(savedKey, true); } else { useOsmBasemap(); }
     }catch(e){ mapAvailable = false; map = null; }
   }
   if(!mapAvailable){
     document.getElementById('leaflet-map').innerHTML = '<div class="empty-note">Não foi possível carregar as bibliotecas de mapa (Leaflet). Verifique a conexão ou bloqueios de rede/antivírus — o restante do painel (tabelas, KPIs) continua funcionando normalmente.</div>';
+    basemapBtn.style.display = 'none';
   }
+
+  function clearBaseLayer(){ if(baseLayer){ map.removeLayer(baseLayer); baseLayer = null; } }
+
+  function useOsmBasemap(){
+    clearBaseLayer();
+    baseLayer = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      maxZoom: 18,
+      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+    }).addTo(map);
+    basemapBtn.textContent = 'Mapa base: OpenStreetMap';
+  }
+
+  var googleLoadPromise = null;
+  function loadGoogleMapsScript(key){
+    if(googleLoadPromise) return googleLoadPromise;
+    googleLoadPromise = new Promise(function(resolve, reject){
+      if(typeof google !== 'undefined' && google.maps){ resolve(); return; }
+      var s = document.createElement('script');
+      s.src = 'https://maps.googleapis.com/maps/api/js?key=' + encodeURIComponent(key);
+      s.onerror = function(){ reject(new Error('load-error')); };
+      s.onload = function(){
+        setTimeout(function(){ (typeof google !== 'undefined' && google.maps) ? resolve() : reject(new Error('no-google-maps')); }, 250);
+      };
+      document.head.appendChild(s);
+    });
+    return googleLoadPromise;
+  }
+
+  function useGoogleBasemap(key, silentFallback){
+    if(typeof L.gridLayer.googleMutant !== 'function'){
+      if(!silentFallback) showBasemapError('Plugin de integra&ccedil;&atilde;o com o Google Maps n&atilde;o carregou. Usando OpenStreetMap.');
+      useOsmBasemap();
+      return;
+    }
+    loadGoogleMapsScript(key).then(function(){
+      clearBaseLayer();
+      try{
+        baseLayer = L.gridLayer.googleMutant({type: 'roadmap'}).addTo(map);
+        basemapBtn.textContent = 'Mapa base: Google Maps';
+        try{ localStorage.setItem(GMAPS_KEY_STORAGE, key); }catch(e){}
+        basemapPanel.classList.add('is-hidden');
+        basemapError.style.display = 'none';
+      }catch(e){
+        if(!silentFallback) showBasemapError('N&atilde;o foi poss&iacute;vel iniciar o Google Maps com essa chave. Usando OpenStreetMap.');
+        try{ localStorage.removeItem(GMAPS_KEY_STORAGE); }catch(err){}
+        useOsmBasemap();
+      }
+    }).catch(function(){
+      if(!silentFallback) showBasemapError('N&atilde;o foi poss&iacute;vel carregar o Google Maps com essa chave (verifique se ela &eacute; v&aacute;lida, tem faturamento ativo e est&aacute; liberada para este dom&iacute;nio). Usando OpenStreetMap.');
+      try{ localStorage.removeItem(GMAPS_KEY_STORAGE); }catch(err){}
+      useOsmBasemap();
+    });
+  }
+
+  function showBasemapError(msg){ basemapError.style.display = 'block'; basemapError.innerHTML = msg; }
+
+  basemapBtn.addEventListener('click', function(){
+    try{ basemapKeyInput.value = localStorage.getItem(GMAPS_KEY_STORAGE) || ''; }catch(e){}
+    basemapError.style.display = 'none';
+    basemapPanel.classList.toggle('is-hidden');
+  });
+  document.getElementById('basemap-close').addEventListener('click', function(){ basemapPanel.classList.add('is-hidden'); });
+  document.getElementById('basemap-use-osm').addEventListener('click', function(){
+    try{ localStorage.removeItem(GMAPS_KEY_STORAGE); }catch(e){}
+    useOsmBasemap();
+    basemapPanel.classList.add('is-hidden');
+  });
+  document.getElementById('basemap-key-save').addEventListener('click', function(){
+    var key = basemapKeyInput.value.trim();
+    if(!key){ showBasemapError('Cole uma chave de API v&aacute;lida.'); return; }
+    basemapError.style.display = 'none';
+    useGoogleBasemap(key, false);
+  });
 
   var mapToggle = document.getElementById('map-toggle');
   mapToggle.addEventListener('click', function(e){
