@@ -644,6 +644,10 @@
       <button class="modal-close" id="import-close" aria-label="Fechar">&times;</button>
     </div>
     <div class="modal-body">
+      <div id="imported-block" style="display:none;margin-bottom:16px;">
+        <div class="attach-list-head"><span>Arquivos j&aacute; importados</span></div>
+        <div class="attach-list" id="imported-list"></div>
+      </div>
       <div class="dropzone" id="dropzone" tabindex="0">
         Arraste um ou mais arquivos <strong>.kmz</strong> / <strong>.kml</strong> aqui, ou
         <label for="file-input" style="color:var(--accent);cursor:pointer;text-decoration:underline;">selecione no computador</label>.
@@ -1373,10 +1377,49 @@
     fileInput.value = '';
     dropzone.classList.remove('is-drag');
     renderAttachList();
+    renderImportedList();
     updateLock();
     overlay.classList.remove('is-hidden');
   }
   function closeImport(){ overlay.classList.add('is-hidden'); }
+
+  /* ---- arquivos já importados: exclui o KMZ/KML inteiro e todos os
+     trechos/marcadores que vieram dele (não afeta dados de exemplo/manuais) ---- */
+  function renderImportedList(){
+    var block = document.getElementById('imported-block');
+    var list = document.getElementById('imported-list');
+    if(!state.batches.length){ block.style.display = 'none'; list.innerHTML = ''; return; }
+    block.style.display = 'block';
+    list.innerHTML = state.batches.map(function(b){
+      var tCount = state.trechos.filter(function(t){ return t.batchId === b.id; }).length;
+      var mCount = state.marcadores.filter(function(m){ return m.batchId === b.id; }).length;
+      return '<div class="attach-row">' +
+        '<span class="swatch" style="background:' + b.cor + '"></span>' +
+        '<span class="name" title="' + esc(b.nome) + '">' + esc(b.nome) + '</span>' +
+        '<span class="meta">' + tCount + ' trecho(s) &middot; ' + mCount + ' marcador(es)</span>' +
+        '<button class="remove-btn" data-delete-batch="' + b.id + '" aria-label="Excluir ' + esc(b.nome) + ' e todos os dados importados dele" title="Excluir este KMZ e todos os dados que ele trouxe">&times;</button>' +
+      '</div>';
+    }).join('');
+    list.querySelectorAll('[data-delete-batch]').forEach(function(btn){
+      btn.addEventListener('click', function(){ deleteBatch(btn.dataset.deleteBatch); });
+    });
+  }
+
+  function deleteBatch(batchId){
+    var batch = state.batches.filter(function(b){ return b.id === batchId; })[0];
+    if(!batch) return;
+    var tCount = state.trechos.filter(function(t){ return t.batchId === batchId; }).length;
+    var mCount = state.marcadores.filter(function(m){ return m.batchId === batchId; }).length;
+    var ok = window.confirm('Excluir "' + batch.nome + '" e todos os dados que vieram dele (' + tCount + ' trecho(s), ' + mCount + ' marcador(es))?\n\nEssa ação não pode ser desfeita.');
+    if(!ok) return;
+    state.trechos = state.trechos.filter(function(t){ return t.batchId !== batchId; });
+    state.marcadores = state.marcadores.filter(function(m){ return m.batchId !== batchId; });
+    state.batches = state.batches.filter(function(b){ return b.id !== batchId; });
+    saveState();
+    renderAll();
+    renderImportedList();
+    showToast('"' + batch.nome + '" e seus dados foram excluídos (' + tCount + ' trecho(s), ' + mCount + ' marcador(es))');
+  }
   document.getElementById('btn-import-1').addEventListener('click', openImport);
   document.getElementById('btn-import-2').addEventListener('click', openImport);
   document.getElementById('import-close').addEventListener('click', closeImport);
