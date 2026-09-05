@@ -4,6 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Jarvis Preventivas</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
 <style>
   :root{
     --bg:#F6F7FB;
@@ -203,6 +204,7 @@
     transition:background-color .12s ease,border-color .12s ease,color .12s ease;
     white-space:nowrap;
   }
+  .btn:disabled{opacity:.5;cursor:not-allowed;}
   .btn-primary{background:var(--accent);border:1px solid var(--accent);color:var(--accent-ink);}
   .btn-primary:hover{filter:brightness(1.07);}
   .btn-secondary{background:var(--surface);border:1px solid var(--border);color:var(--ink);}
@@ -216,10 +218,11 @@
   }
   .field{display:flex;flex-direction:column;gap:3px;}
   .field label{font-size:10.5px;font-weight:600;color:var(--ink-3);text-transform:uppercase;letter-spacing:.05em;}
-  .field select,.field input{
+  .field select,.field input,.mini-input{
     background:var(--surface);border:1px solid var(--border);border-radius:6px;
     color:var(--ink);font-size:12.5px;padding:6px 9px;font-family:inherit;
   }
+  .mini-input{font-size:12px;padding:4px 6px;border-radius:5px;}
   .field.search{flex:1;min-width:180px;}
   .field.search input{width:100%;}
   .filters-count{margin-left:auto;font-size:12px;color:var(--ink-2);align-self:flex-end;padding-bottom:6px;}
@@ -232,6 +235,8 @@
   }
   .banner .bdot{width:6px;height:6px;border-radius:50%;background:var(--accent);flex:0 0 6px;}
   .banner button{background:none;border:none;color:var(--accent);font-weight:600;font-size:12.5px;cursor:pointer;margin-left:auto;padding:2px;}
+  .banner.warn{background:var(--warn-bg);color:var(--warn);}
+  .banner.warn .bdot{background:var(--warn);}
 
   .content{padding:22px 20px 8px;display:flex;flex-direction:column;gap:26px;}
 
@@ -258,6 +263,7 @@
   .sec-head .sec-note{font-size:11.5px;color:var(--ink-3);}
 
   .card{background:var(--surface);border:1px solid var(--border);border-radius:8px;}
+  .empty-note{padding:16px;color:var(--ink-3);font-size:12.5px;}
 
   /* ---------- alerts ---------- */
   .alert-list{display:flex;flex-direction:column;}
@@ -350,22 +356,31 @@
   .segmented button:first-child{border-left:none;}
   .segmented button.is-active{background:var(--accent);color:var(--accent-ink);}
   .map-stage{flex:1;position:relative;min-height:520px;background:var(--surface-2);overflow:hidden;}
+  #leaflet-map{position:absolute;inset:0;background:var(--surface-2);}
+  .leaflet-container{font-family:inherit;}
   .map-legend{
     position:absolute;top:14px;right:14px;background:var(--surface);border:1px solid var(--border);
-    border-radius:7px;padding:11px 13px;box-shadow:var(--shadow-pop);min-width:168px;
+    border-radius:7px;padding:11px 13px;box-shadow:var(--shadow-pop);min-width:168px;z-index:1000;
   }
   .map-legend h3{font-size:10.5px;text-transform:uppercase;letter-spacing:.05em;color:var(--ink-3);margin:0 0 8px;}
-  .map-plate{
-    font-size:9.5px;font-weight:700;color:#fff;padding:2px 6px;border-radius:3px;
-    letter-spacing:.03em;
+  .map-empty-note{
+    position:absolute;left:14px;bottom:14px;z-index:1000;background:var(--surface);border:1px solid var(--border);
+    border-radius:7px;padding:8px 12px;font-size:11.5px;color:var(--ink-2);box-shadow:var(--shadow-pop);max-width:260px;
   }
+  .marker-plate{
+    font-size:9.5px;font-weight:700;color:#fff;padding:2px 7px;border-radius:3px;letter-spacing:.03em;
+    white-space:nowrap;box-shadow:0 1px 3px rgb(0 0 0 / .25);
+  }
+  .leaflet-tooltip.plate-tooltip{background:none;border:none;box-shadow:none;padding:0;}
+  .leaflet-tooltip.plate-tooltip::before{display:none;}
 
   /* ---------- toast ---------- */
   .toast{
     position:fixed;left:50%;bottom:56px;transform:translate(-50%,12px);
     background:var(--ink);color:var(--bg);font-size:12.5px;font-weight:600;
     padding:9px 16px;border-radius:7px;box-shadow:var(--shadow-pop);
-    opacity:0;pointer-events:none;transition:opacity .16s ease,transform .16s ease;z-index:60;
+    opacity:0;pointer-events:none;transition:opacity .16s ease,transform .16s ease;z-index:90;
+    max-width:min(80vw,420px);
   }
   .toast.is-visible{opacity:1;transform:translate(-50%,0);}
 
@@ -376,6 +391,37 @@
     display:flex;align-items:center;justify-content:flex-end;
     padding:0 18px;font-size:10.5px;color:var(--sidebar-text);letter-spacing:.02em;
   }
+
+  /* ---------- import modal ---------- */
+  .modal-overlay{
+    position:fixed;inset:0;background:rgb(8 13 24 / .5);z-index:100;
+    display:flex;align-items:center;justify-content:center;padding:24px;
+  }
+  .modal-overlay.is-hidden{display:none;}
+  .modal{
+    background:var(--surface);border:1px solid var(--border);border-radius:10px;
+    width:100%;max-width:860px;max-height:88vh;display:flex;flex-direction:column;
+    box-shadow:var(--shadow-pop);
+  }
+  .modal-head{
+    display:flex;align-items:center;justify-content:space-between;
+    padding:14px 20px;border-bottom:1px solid var(--border);flex:0 0 auto;
+  }
+  .modal-head h2{font-size:15px;font-weight:600;margin:0;}
+  .modal-close{background:none;border:none;font-size:19px;line-height:1;color:var(--ink-3);cursor:pointer;padding:4px;}
+  .modal-close:hover{color:var(--ink);}
+  .modal-body{padding:18px 20px;overflow-y:auto;flex:1 1 auto;}
+  .modal-foot{
+    display:flex;justify-content:flex-end;gap:8px;
+    padding:14px 20px;border-top:1px solid var(--border);flex:0 0 auto;
+  }
+  .dropzone{
+    border:1.5px dashed var(--border);border-radius:8px;padding:30px 20px;text-align:center;
+    color:var(--ink-2);font-size:12.5px;cursor:pointer;transition:border-color .12s ease,background-color .12s ease;
+  }
+  .dropzone.is-drag{border-color:var(--accent);background:var(--surface-2);color:var(--ink);}
+  .import-summary{font-size:12px;color:var(--ink-2);margin:14px 0 8px;}
+  .preview-block + .preview-block{margin-top:14px;}
 
   @media (max-width:900px){
     .chart-row{grid-template-columns:1fr;}
@@ -427,20 +473,16 @@
           <button class="btn btn-secondary" data-toast="Backup / Restaurar">Backup / Restaurar</button>
           <button class="btn btn-secondary" data-toast="Exportar CSV">Exportar CSV</button>
           <button class="btn btn-primary" data-toast="Registrar preventiva">Registrar preventiva</button>
-          <button class="btn btn-primary" data-toast="Importar KMZ/KML">Importar KMZ/KML</button>
+          <button class="btn btn-primary" id="btn-import-1">Importar KMZ/KML</button>
         </div>
       </div>
 
-      <div class="banner">
-        <span class="bdot"></span>
-        Exibindo dados de exemplo (6 trechos + 4 marcadores fict&iacute;cios). Importe um KMZ/KML para substituir.
-        <button data-toast="Limpar dados de exemplo">Limpar dados de exemplo</button>
-      </div>
+      <div class="banner" id="banner"></div>
 
       <div class="filters">
         <div class="field">
           <label for="f-uf">UF</label>
-          <select id="f-uf"><option value="">Todas</option><option>MA</option><option>PA</option><option>PI</option><option>AP</option><option>AM</option></select>
+          <select id="f-uf"><option value="">Todas</option></select>
         </div>
         <div class="field">
           <label for="f-praca">Pra&ccedil;a</label>
@@ -461,96 +503,28 @@
       </div>
 
       <div class="content">
-        <div class="kpi-strip">
-          <div class="kpi"><div class="kpi-label">Trechos monitorados</div><div class="kpi-value v-ink num">128</div><div class="kpi-sub">3.482,6 km</div></div>
-          <div class="kpi"><div class="kpi-label">Em dia</div><div class="kpi-value v-good num">81%</div><div class="kpi-sub">104 trechos</div></div>
-          <div class="kpi"><div class="kpi-label">Km monitorados</div><div class="kpi-value v-ink num">3.482,6</div><div class="kpi-sub">backbone + acesso</div></div>
-          <div class="kpi"><div class="kpi-label">Vencendo &le;7 dias</div><div class="kpi-value v-warn num">9</div><div class="kpi-sub">aten&ccedil;&atilde;o</div></div>
-          <div class="kpi"><div class="kpi-label">Vencidos</div><div class="kpi-value v-crit num">15</div><div class="kpi-sub">a&ccedil;&atilde;o imediata</div></div>
-          <div class="kpi"><div class="kpi-label">Ocorr&ecirc;ncias (30d)</div><div class="kpi-value v-ink num">14</div><div class="kpi-sub">todas as execu&ccedil;&otilde;es</div></div>
-        </div>
+        <div class="kpi-strip" id="kpi-strip"></div>
 
         <section id="alertas">
           <div class="sec-head"><h2>Alertas de vencimento</h2><span class="sec-note">vencidos + vencendo em 14 dias</span></div>
-          <div class="card alert-list">
-            <div class="alert-row">
-              <span class="pill pill-crit">Vencido</span>
-              <span class="name">AC-MA-08 &middot; Imperatriz Norte &ndash; Bacuri</span>
-              <span class="meta">Acesso</span>
-              <span class="meta num">h&aacute; 21 dias</span>
-              <span class="meta">Imperatriz / MA</span>
-            </div>
-            <div class="alert-row">
-              <span class="pill pill-crit">Vencido</span>
-              <span class="name">AC-PI-05 &middot; Teresina Sul &ndash; Timon</span>
-              <span class="meta">Acesso</span>
-              <span class="meta num">h&aacute; 18 dias</span>
-              <span class="meta">Teresina / PI</span>
-            </div>
-            <div class="alert-row">
-              <span class="pill pill-crit">Vencido</span>
-              <span class="name">BB-MA-01 &middot; Imperatriz &ndash; A&ccedil;ail&acirc;ndia</span>
-              <span class="meta">Backbone</span>
-              <span class="meta num">h&aacute; 3 dias</span>
-              <span class="meta">Imperatriz / MA</span>
-            </div>
-            <div class="alert-row">
-              <span class="pill pill-warn">Aten&ccedil;&atilde;o</span>
-              <span class="name">AC-MA-03 &middot; S&atilde;o Lu&iacute;s Centro &ndash; Cohama</span>
-              <span class="meta">Acesso</span>
-              <span class="meta num">vence em 4 dias</span>
-              <span class="meta">S&atilde;o Lu&iacute;s / MA</span>
-            </div>
-            <div class="alert-row">
-              <span class="pill pill-warn">Aten&ccedil;&atilde;o</span>
-              <span class="name">AC-AM-06 &middot; Manaus Distrito &ndash; Flores</span>
-              <span class="meta">Acesso</span>
-              <span class="meta num">vence em 6 dias</span>
-              <span class="meta">Manaus / AM</span>
-            </div>
-          </div>
+          <div class="card alert-list" id="alert-list"></div>
         </section>
 
         <div class="chart-row">
           <section id="dist-status" class="card chart-card">
             <div class="sec-head"><h2>Distribui&ccedil;&atilde;o por status</h2></div>
-            <div class="donut-wrap">
-              <svg width="140" height="140" viewBox="0 0 140 140" role="img" aria-label="Distribui&ccedil;&atilde;o de trechos por status: 81% em dia, 7% em aten&ccedil;&atilde;o, 12% vencidos">
-                <g transform="rotate(-90 70 70)">
-                  <circle cx="70" cy="70" r="54" fill="none" stroke="var(--surface-3)" stroke-width="16"></circle>
-                  <circle cx="70" cy="70" r="54" fill="none" stroke="var(--good)" stroke-width="16"
-                    stroke-dasharray="272.7 339.3" stroke-dashoffset="0" stroke-linecap="butt"></circle>
-                  <circle cx="70" cy="70" r="54" fill="none" stroke="var(--warn)" stroke-width="16"
-                    stroke-dasharray="20.9 339.3" stroke-dashoffset="-275.7" stroke-linecap="butt"></circle>
-                  <circle cx="70" cy="70" r="54" fill="none" stroke="var(--crit)" stroke-width="16"
-                    stroke-dasharray="36.8 339.3" stroke-dashoffset="-299.6" stroke-linecap="butt"></circle>
-                </g>
-                <text x="70" y="66" text-anchor="middle" class="donut-center-label" fill="var(--ink)" style="font-family:Calibri,'Segoe UI',Helvetica,Arial,sans-serif;">81%</text>
-                <text x="70" y="82" text-anchor="middle" class="donut-center-sub" fill="var(--ink-3)" style="font-family:Calibri,'Segoe UI',Helvetica,Arial,sans-serif;">EM DIA</text>
-              </svg>
-              <div class="legend">
-                <div class="legend-row"><span class="sw" style="background:var(--good)"></span><span class="lbl">Em dia</span><span class="val num">104</span></div>
-                <div class="legend-row"><span class="sw" style="background:var(--warn)"></span><span class="lbl">Aten&ccedil;&atilde;o (&le;7d)</span><span class="val num">9</span></div>
-                <div class="legend-row"><span class="sw" style="background:var(--crit)"></span><span class="lbl">Vencido</span><span class="val num">15</span></div>
-              </div>
-            </div>
+            <div class="donut-wrap" id="donut-wrap"></div>
           </section>
 
           <section id="cumprimento-uf" class="card chart-card">
             <div class="sec-head"><h2>% de cumprimento por UF</h2></div>
-            <div class="bar-rows">
-              <div class="bar-row"><span class="uf">PI</span><div class="bar-track"><div class="bar-fill" style="width:69%"></div></div><span class="pct num">69%</span></div>
-              <div class="bar-row"><span class="uf">MA</span><div class="bar-track"><div class="bar-fill" style="width:74%"></div></div><span class="pct num">74%</span></div>
-              <div class="bar-row"><span class="uf">AM</span><div class="bar-track"><div class="bar-fill" style="width:80%"></div></div><span class="pct num">80%</span></div>
-              <div class="bar-row"><span class="uf">PA</span><div class="bar-track"><div class="bar-fill" style="width:88%"></div></div><span class="pct num">88%</span></div>
-              <div class="bar-row"><span class="uf">AP</span><div class="bar-track"><div class="bar-fill" style="width:95%"></div></div><span class="pct num">95%</span></div>
-            </div>
-            <div class="bar-scale"><span>0%</span><span>50%</span><span>100%</span></div>
+            <div class="bar-rows" id="bar-rows"></div>
+            <div class="bar-scale" id="bar-scale" style="display:none;"><span>0%</span><span>50%</span><span>100%</span></div>
           </section>
         </div>
 
         <section id="trechos">
-          <div class="sec-head"><h2>Trechos</h2><span class="sec-note num" id="trechos-count">mostrando 8 de 128</span></div>
+          <div class="sec-head"><h2>Trechos</h2><span class="sec-note num" id="trechos-count"></span></div>
           <div class="card table-scroll">
             <table class="data" id="tbl-trechos">
               <thead>
@@ -559,76 +533,14 @@
                   <th>Km</th><th>Ciclo</th><th>Status</th><th>&Uacute;ltima prev.</th><th></th>
                 </tr>
               </thead>
-              <tbody>
-                <tr data-uf="MA" data-tipo="Backbone" data-status="Vencido" data-nome="BB-MA-01 Imperatriz Açailândia">
-                  <td>BB-MA-01 &middot; Imperatriz &ndash; A&ccedil;ail&acirc;ndia</td><td><span class="type-chip">Backbone</span></td><td>MA</td><td>Imperatriz</td>
-                  <td class="num">86,4</td><td class="num">30d</td><td><span class="pill pill-crit">Vencido</span></td><td class="num">03/08</td>
-                  <td><div class="row-actions"><button data-toast="Editar trecho">Editar</button><button class="danger" data-toast="Excluir trecho">Excluir</button></div></td>
-                </tr>
-                <tr data-uf="PA" data-tipo="Backbone" data-status="Em dia" data-nome="BB-PA-02 Belém Ananindeua">
-                  <td>BB-PA-02 &middot; Bel&eacute;m &ndash; Ananindeua</td><td><span class="type-chip">Backbone</span></td><td>PA</td><td>Bel&eacute;m</td>
-                  <td class="num">24,1</td><td class="num">30d</td><td><span class="pill pill-good">Em dia</span></td><td class="num">22/08</td>
-                  <td><div class="row-actions"><button data-toast="Editar trecho">Editar</button><button class="danger" data-toast="Excluir trecho">Excluir</button></div></td>
-                </tr>
-                <tr data-uf="MA" data-tipo="Acesso" data-status="Atenção" data-nome="AC-MA-03 São Luís Centro Cohama">
-                  <td>AC-MA-03 &middot; S&atilde;o Lu&iacute;s Centro &ndash; Cohama</td><td><span class="type-chip">Acesso</span></td><td>MA</td><td>S&atilde;o Lu&iacute;s</td>
-                  <td class="num">9,8</td><td class="num">60d</td><td><span class="pill pill-warn">Aten&ccedil;&atilde;o</span></td><td class="num">10/07</td>
-                  <td><div class="row-actions"><button data-toast="Editar trecho">Editar</button><button class="danger" data-toast="Excluir trecho">Excluir</button></div></td>
-                </tr>
-                <tr data-uf="AP" data-tipo="Backbone" data-status="Em dia" data-nome="BB-AP-04 Macapá Santana">
-                  <td>BB-AP-04 &middot; Macap&aacute; &ndash; Santana</td><td><span class="type-chip">Backbone</span></td><td>AP</td><td>Macap&aacute;</td>
-                  <td class="num">18,6</td><td class="num">30d</td><td><span class="pill pill-good">Em dia</span></td><td class="num">28/08</td>
-                  <td><div class="row-actions"><button data-toast="Editar trecho">Editar</button><button class="danger" data-toast="Excluir trecho">Excluir</button></div></td>
-                </tr>
-                <tr data-uf="PI" data-tipo="Acesso" data-status="Vencido" data-nome="AC-PI-05 Teresina Sul Timon">
-                  <td>AC-PI-05 &middot; Teresina Sul &ndash; Timon</td><td><span class="type-chip">Acesso</span></td><td>PI</td><td>Teresina</td>
-                  <td class="num">15,2</td><td class="num">60d</td><td><span class="pill pill-crit">Vencido</span></td><td class="num">02/07</td>
-                  <td><div class="row-actions"><button data-toast="Editar trecho">Editar</button><button class="danger" data-toast="Excluir trecho">Excluir</button></div></td>
-                </tr>
-                <tr data-uf="AM" data-tipo="Acesso" data-status="Atenção" data-nome="AC-AM-06 Manaus Distrito Flores">
-                  <td>AC-AM-06 &middot; Manaus Distrito &ndash; Flores</td><td><span class="type-chip">Acesso</span></td><td>AM</td><td>Manaus</td>
-                  <td class="num">11,4</td><td class="num">60d</td><td><span class="pill pill-warn">Aten&ccedil;&atilde;o</span></td><td class="num">15/08</td>
-                  <td><div class="row-actions"><button data-toast="Editar trecho">Editar</button><button class="danger" data-toast="Excluir trecho">Excluir</button></div></td>
-                </tr>
-                <tr data-uf="PA" data-tipo="Backbone" data-status="Em dia" data-nome="BB-PA-07 Marabá Parauapebas">
-                  <td>BB-PA-07 &middot; Marab&aacute; &ndash; Parauapebas</td><td><span class="type-chip">Backbone</span></td><td>PA</td><td>Marab&aacute;</td>
-                  <td class="num">102,3</td><td class="num">30d</td><td><span class="pill pill-good">Em dia</span></td><td class="num">26/08</td>
-                  <td><div class="row-actions"><button data-toast="Editar trecho">Editar</button><button class="danger" data-toast="Excluir trecho">Excluir</button></div></td>
-                </tr>
-                <tr data-uf="MA" data-tipo="Acesso" data-status="Vencido" data-nome="AC-MA-08 Imperatriz Norte Bacuri">
-                  <td>AC-MA-08 &middot; Imperatriz Norte &ndash; Bacuri</td><td><span class="type-chip">Acesso</span></td><td>MA</td><td>Imperatriz</td>
-                  <td class="num">6,7</td><td class="num">60d</td><td><span class="pill pill-crit">Vencido</span></td><td class="num">30/06</td>
-                  <td><div class="row-actions"><button data-toast="Editar trecho">Editar</button><button class="danger" data-toast="Excluir trecho">Excluir</button></div></td>
-                </tr>
-              </tbody>
+              <tbody id="tbl-trechos-body"></tbody>
             </table>
           </div>
         </section>
 
         <section id="marcadores">
-          <div class="sec-head"><h2>Marcadores CEO/CTO/CTOE</h2><span class="sec-note">4 de exemplo</span></div>
-          <div class="card marker-grid">
-            <div class="marker-card">
-              <span class="marker-tag" style="background:var(--el-ctoe)">CTOE</span>
-              <span class="marker-name">CTOE-MA-014</span>
-              <span class="marker-loc">Imperatriz / MA</span>
-            </div>
-            <div class="marker-card">
-              <span class="marker-tag" style="background:var(--el-ceo)">CEO</span>
-              <span class="marker-name">CEO-PA-002</span>
-              <span class="marker-loc">Bel&eacute;m / PA</span>
-            </div>
-            <div class="marker-card">
-              <span class="marker-tag" style="background:var(--el-cto)">CTO</span>
-              <span class="marker-name">CTO-AP-021</span>
-              <span class="marker-loc">Macap&aacute; / AP</span>
-            </div>
-            <div class="marker-card">
-              <span class="marker-tag" style="background:var(--el-cto)">CTO</span>
-              <span class="marker-name">CTO-AM-009</span>
-              <span class="marker-loc">Manaus / AM</span>
-            </div>
-          </div>
+          <div class="sec-head"><h2>Marcadores CEO/CTO/CTOE</h2><span class="sec-note num" id="marcadores-count"></span></div>
+          <div class="card marker-grid" id="marker-grid"></div>
         </section>
       </div>
     </div>
@@ -644,7 +556,7 @@
         </div>
         <div class="actions">
           <button class="btn btn-secondary" data-toast="Backup / Restaurar">Backup / Restaurar</button>
-          <button class="btn btn-primary" data-toast="Importar KMZ/KML">Importar KMZ/KML</button>
+          <button class="btn btn-primary" id="btn-import-2">Importar KMZ/KML</button>
         </div>
       </div>
       <div class="map-toolbar">
@@ -652,71 +564,18 @@
           <button class="is-active" data-mode="status">Colorir por status</button>
           <button data-mode="arquivo">Colorir por arquivo KMZ</button>
         </div>
-        <span class="sec-note">6 trechos &middot; 4 marcadores</span>
+        <span class="sec-note" id="map-summary"></span>
       </div>
       <div class="map-stage">
-        <svg width="100%" height="100%" viewBox="0 0 960 560" preserveAspectRatio="xMidYMid slice" style="position:absolute;inset:0;">
-          <defs>
-            <pattern id="dotgrid" width="24" height="24" patternUnits="userSpaceOnUse">
-              <circle cx="1.4" cy="1.4" r="1.4" fill="var(--border)"></circle>
-            </pattern>
-          </defs>
-          <rect width="960" height="560" fill="url(#dotgrid)"></rect>
-
-          <g id="lines-status" fill="none" stroke-width="3.4" stroke-linecap="round">
-            <path d="M110,120 C220,90 260,180 360,170" stroke="var(--good)"></path>
-            <path d="M360,170 C440,160 470,240 560,250" stroke="var(--crit)"></path>
-            <path d="M560,250 C640,258 660,320 740,330" stroke="var(--good)"></path>
-            <path d="M300,300 C360,340 420,330 470,380" stroke="var(--warn)"></path>
-            <path d="M470,380 C540,410 600,400 660,440" stroke="var(--good)"></path>
-            <path d="M180,380 C240,360 260,320 300,300" stroke="var(--crit)"></path>
-          </g>
-          <g id="lines-arquivo" fill="none" stroke-width="3.4" stroke-linecap="round" style="display:none;">
-            <path d="M110,120 C220,90 260,180 360,170" stroke="#1476C9"></path>
-            <path d="M360,170 C440,160 470,240 560,250" stroke="#1476C9"></path>
-            <path d="M560,250 C640,258 660,320 740,330" stroke="#42C34B"></path>
-            <path d="M300,300 C360,340 420,330 470,380" stroke="#42C34B"></path>
-            <path d="M470,380 C540,410 600,400 660,440" stroke="#B98A2E"></path>
-            <path d="M180,380 C240,360 260,320 300,300" stroke="#8891A6"></path>
-          </g>
-
-          <g font-family="Calibri,'Segoe UI',Helvetica,Arial,sans-serif">
-            <g transform="translate(360,170)">
-              <circle r="5.5" fill="var(--el-ctoe)" stroke="var(--surface)" stroke-width="2"></circle>
-              <rect x="10" y="-10" width="52" height="16" rx="3" fill="var(--el-ctoe)"></rect>
-              <text x="36" y="1.5" text-anchor="middle" font-size="9.5" font-weight="700" fill="#fff">CTOE</text>
-            </g>
-            <g transform="translate(560,250)">
-              <circle r="5.5" fill="var(--el-ceo)" stroke="var(--surface)" stroke-width="2"></circle>
-              <rect x="10" y="-10" width="46" height="16" rx="3" fill="var(--el-ceo)"></rect>
-              <text x="33" y="1.5" text-anchor="middle" font-size="9.5" font-weight="700" fill="#fff">CEO</text>
-            </g>
-            <g transform="translate(300,300)">
-              <circle r="5.5" fill="var(--el-cto)" stroke="var(--surface)" stroke-width="2"></circle>
-              <rect x="10" y="-10" width="44" height="16" rx="3" fill="var(--el-cto)"></rect>
-              <text x="32" y="1.5" text-anchor="middle" font-size="9.5" font-weight="700" fill="#fff">CTO</text>
-            </g>
-            <g transform="translate(660,440)">
-              <circle r="5.5" fill="var(--el-cto)" stroke="var(--surface)" stroke-width="2"></circle>
-              <rect x="10" y="-10" width="44" height="16" rx="3" fill="var(--el-cto)"></rect>
-              <text x="32" y="1.5" text-anchor="middle" font-size="9.5" font-weight="700" fill="#fff">CTO</text>
-            </g>
-          </g>
-        </svg>
-
+        <div id="leaflet-map"></div>
         <div class="map-legend" id="legend-status">
           <h3>Status do trecho</h3>
           <div class="legend-row"><span class="sw" style="background:var(--good)"></span><span class="lbl">Em dia</span></div>
           <div class="legend-row"><span class="sw" style="background:var(--warn)"></span><span class="lbl">Aten&ccedil;&atilde;o</span></div>
           <div class="legend-row"><span class="sw" style="background:var(--crit)"></span><span class="lbl">Vencido</span></div>
         </div>
-        <div class="map-legend" id="legend-arquivo" style="display:none;">
-          <h3>Arquivo de origem</h3>
-          <div class="legend-row"><span class="sw" style="background:#1476C9"></span><span class="lbl">backbone_norte.kmz</span><span class="val num">2</span></div>
-          <div class="legend-row"><span class="sw" style="background:#42C34B"></span><span class="lbl">acesso_belem.kmz</span><span class="val num">2</span></div>
-          <div class="legend-row"><span class="sw" style="background:#B98A2E"></span><span class="lbl">acesso_manaus.kml</span><span class="val num">1</span></div>
-          <div class="legend-row"><span class="sw" style="background:#8891A6"></span><span class="lbl">Sem origem / manual</span><span class="val num">1</span></div>
-        </div>
+        <div class="map-legend" id="legend-arquivo" style="display:none;"></div>
+        <div class="map-empty-note" id="map-empty-note" style="display:none;"></div>
       </div>
     </div>
   </main>
@@ -725,14 +584,157 @@
 <div class="footer">Jarvis MCLL &middot; alloha FIBRA</div>
 <div class="toast" id="toast"></div>
 
-<script>
-  var reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+<!-- ============ IMPORT MODAL ============ -->
+<div class="modal-overlay is-hidden" id="import-overlay">
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="import-title">
+    <div class="modal-head">
+      <h2 id="import-title">Importar KMZ/KML</h2>
+      <button class="modal-close" id="import-close" aria-label="Fechar">&times;</button>
+    </div>
+    <div class="modal-body">
+      <div class="dropzone" id="dropzone" tabindex="0">
+        Arraste um ou mais arquivos <strong>.kmz</strong> / <strong>.kml</strong> aqui, ou
+        <label for="file-input" style="color:var(--accent);cursor:pointer;text-decoration:underline;">selecione no computador</label>.
+        <input type="file" id="file-input" accept=".kmz,.kml" multiple style="display:none;">
+      </div>
+      <div id="import-warning" class="banner warn" style="display:none;border-radius:6px;margin-top:12px;"></div>
+      <div id="import-preview" style="display:none;">
+        <div class="import-summary" id="preview-summary"></div>
+        <div class="preview-block">
+          <div class="sec-head"><h2 style="font-size:12.5px;">Trechos detectados (linhas)</h2></div>
+          <div class="table-scroll card">
+            <table class="data">
+              <thead><tr><th>Nome</th><th>Tipo</th><th>UF</th><th>Pra&ccedil;a</th><th>Km</th><th>Ciclo (dias)</th></tr></thead>
+              <tbody id="preview-trechos-body"></tbody>
+            </table>
+          </div>
+        </div>
+        <div class="preview-block">
+          <div class="sec-head"><h2 style="font-size:12.5px;">Marcadores detectados (CEO/CTO/CTOE)</h2></div>
+          <div class="table-scroll card">
+            <table class="data">
+              <thead><tr><th>Nome</th><th>Elemento</th><th>UF</th><th>Pra&ccedil;a</th></tr></thead>
+              <tbody id="preview-marcadores-body"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="modal-foot">
+      <button class="btn btn-secondary" id="import-cancel">Cancelar</button>
+      <button class="btn btn-primary" id="import-confirm" disabled>Confirmar importa&ccedil;&atilde;o</button>
+    </div>
+  </div>
+</div>
 
-  // sidebar collapse
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<script>
+(function(){
+  "use strict";
+  var reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  var STORE_KEY = 'jarvis-preventivas-v1';
+  var BATCH_PALETTE = ['#1476C9','#42C34B','#B98A2E','#7C5CFC','#0E9C8B','#E5484D','#2E6FEB','#C2410C','#0D9488','#9333EA','#65A30D','#DB2777'];
+  var UF_LIST = ['AC','AL','AM','AP','BA','CE','DF','ES','GO','MA','MG','MS','MT','PA','PB','PE','PI','PR','RJ','RN','RO','RR','RS','SC','SE','SP','TO'];
+
+  function pad(n){ return n < 10 ? '0' + n : '' + n; }
+  function todayISO(){ var d = new Date(); return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate()); }
+  function daysAgoISO(n){ var d = new Date(); d.setDate(d.getDate() - n); return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate()); }
+  function fmtKm(n){ return (Math.round(n * 10) / 10).toFixed(1).replace('.', ','); }
+  function fmtDateBR(iso){ var p = iso.split('-'); return p[2] + '/' + p[1]; }
+  function esc(s){ return String(s == null ? '' : s).replace(/[&<>"]/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]; }); }
+
+  function defaultTrechos(){
+    return [
+      {id:'t1', nome:'BB-MA-01 · Imperatriz – Açailândia', tipo:'Backbone', uf:'MA', praca:'Imperatriz', km:86.4, cicloDias:30, ultimaPrevencao:daysAgoISO(33), batchId:null, isExemplo:true, geo:null},
+      {id:'t2', nome:'BB-PA-02 · Belém – Ananindeua', tipo:'Backbone', uf:'PA', praca:'Belém', km:24.1, cicloDias:30, ultimaPrevencao:daysAgoISO(14), batchId:null, isExemplo:true, geo:null},
+      {id:'t3', nome:'AC-MA-03 · São Luís Centro – Cohama', tipo:'Acesso', uf:'MA', praca:'São Luís', km:9.8, cicloDias:60, ultimaPrevencao:daysAgoISO(56), batchId:null, isExemplo:true, geo:null},
+      {id:'t4', nome:'BB-AP-04 · Macapá – Santana', tipo:'Backbone', uf:'AP', praca:'Macapá', km:18.6, cicloDias:30, ultimaPrevencao:daysAgoISO(8), batchId:null, isExemplo:true, geo:null},
+      {id:'t5', nome:'AC-PI-05 · Teresina Sul – Timon', tipo:'Acesso', uf:'PI', praca:'Teresina', km:15.2, cicloDias:60, ultimaPrevencao:daysAgoISO(78), batchId:null, isExemplo:true, geo:null},
+      {id:'t6', nome:'AC-AM-06 · Manaus Distrito – Flores', tipo:'Acesso', uf:'AM', praca:'Manaus', km:11.4, cicloDias:60, ultimaPrevencao:daysAgoISO(54), batchId:null, isExemplo:true, geo:null},
+      {id:'t7', nome:'BB-PA-07 · Marabá – Parauapebas', tipo:'Backbone', uf:'PA', praca:'Marabá', km:102.3, cicloDias:30, ultimaPrevencao:daysAgoISO(10), batchId:null, isExemplo:true, geo:null},
+      {id:'t8', nome:'AC-MA-08 · Imperatriz Norte – Bacuri', tipo:'Acesso', uf:'MA', praca:'Imperatriz', km:6.7, cicloDias:60, ultimaPrevencao:daysAgoISO(81), batchId:null, isExemplo:true, geo:null}
+    ];
+  }
+  function defaultMarcadores(){
+    return [
+      {id:'m1', nome:'CTOE-MA-014', elemento:'CTOE', uf:'MA', praca:'Imperatriz', lat:-5.526, lon:-47.479, batchId:null, isExemplo:true},
+      {id:'m2', nome:'CEO-PA-002', elemento:'CEO', uf:'PA', praca:'Belém', lat:-1.455, lon:-48.490, batchId:null, isExemplo:true},
+      {id:'m3', nome:'CTO-AP-021', elemento:'CTO', uf:'AP', praca:'Macapá', lat:0.034, lon:-51.070, batchId:null, isExemplo:true},
+      {id:'m4', nome:'CTO-AM-009', elemento:'CTO', uf:'AM', praca:'Manaus', lat:-3.119, lon:-60.021, batchId:null, isExemplo:true}
+    ];
+  }
+
+  var state = loadState();
+  function loadState(){
+    try{
+      var raw = localStorage.getItem(STORE_KEY);
+      if(raw){
+        var parsed = JSON.parse(raw);
+        if(parsed && Array.isArray(parsed.trechos) && Array.isArray(parsed.marcadores)){
+          parsed.batches = parsed.batches || [];
+          return parsed;
+        }
+      }
+    }catch(e){}
+    return {trechos: defaultTrechos(), marcadores: defaultMarcadores(), batches: []};
+  }
+  function saveState(){
+    try{ localStorage.setItem(STORE_KEY, JSON.stringify(state)); }catch(e){}
+  }
+
+  function computeStatus(t){
+    if(!t.ultimaPrevencao) return 'Sem execução';
+    var last = new Date(t.ultimaPrevencao + 'T00:00:00');
+    var daysSince = Math.floor((Date.now() - last.getTime()) / 86400000);
+    var remaining = t.cicloDias - daysSince;
+    if(remaining < 0) return 'Vencido';
+    if(remaining <= 7) return 'Atenção';
+    return 'Em dia';
+  }
+  function remainingDays(t){
+    var last = new Date(t.ultimaPrevencao + 'T00:00:00');
+    var daysSince = Math.floor((Date.now() - last.getTime()) / 86400000);
+    return t.cicloDias - daysSince;
+  }
+  function statusPillClass(s){
+    if(s === 'Vencido') return 'pill-crit';
+    if(s === 'Atenção') return 'pill-warn';
+    if(s === 'Em dia') return 'pill-good';
+    return 'pill-warn';
+  }
+  function statusColor(s){
+    if(s === 'Vencido') return 'var(--crit)';
+    if(s === 'Atenção' || s === 'Sem execução') return 'var(--warn)';
+    return 'var(--good)';
+  }
+  function batchColor(batchId){
+    if(!batchId) return '#8891A6';
+    var b = state.batches.filter(function(x){ return x.id === batchId; })[0];
+    return b ? b.cor : '#8891A6';
+  }
+  function batchLabel(batchId){
+    if(!batchId) return 'Sem origem / manual';
+    var b = state.batches.filter(function(x){ return x.id === batchId; })[0];
+    return b ? b.nome : 'Sem origem / manual';
+  }
+
+  var toast = document.getElementById('toast');
+  var toastTimer;
+  function showToast(msg){
+    toast.textContent = msg;
+    toast.classList.add('is-visible');
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(function(){ toast.classList.remove('is-visible'); }, 2600);
+  }
+  document.querySelectorAll('[data-toast]').forEach(function(el){
+    el.addEventListener('click', function(){ showToast(el.dataset.toast + ' — disponível na versão futura'); });
+  });
+
+  /* ---------------- sidebar collapse ---------------- */
   var shell = document.getElementById('shell');
   var sidebarToggles = [document.getElementById('sidebar-toggle-1'), document.getElementById('sidebar-toggle-2')];
   var sidebarReopen = document.getElementById('sidebar-reopen');
-
   function setSidebarCollapsed(collapsed){
     shell.classList.toggle('is-collapsed', collapsed);
     sidebarToggles.forEach(function(btn){
@@ -741,27 +743,24 @@
     });
     sidebarReopen.setAttribute('aria-expanded', String(!collapsed));
     try{ localStorage.setItem('jarvis-sidebar-collapsed', collapsed ? '1' : '0'); }catch(e){}
+    if(map){ setTimeout(function(){ map.invalidateSize(); }, reduceMotion ? 0 : 180); }
   }
-  sidebarToggles.forEach(function(btn){
-    btn.addEventListener('click', function(){ setSidebarCollapsed(!shell.classList.contains('is-collapsed')); });
-  });
+  sidebarToggles.forEach(function(btn){ btn.addEventListener('click', function(){ setSidebarCollapsed(!shell.classList.contains('is-collapsed')); }); });
   sidebarReopen.addEventListener('click', function(){ setSidebarCollapsed(false); });
-  try{
-    if(localStorage.getItem('jarvis-sidebar-collapsed') === '1'){ setSidebarCollapsed(true); }
-  }catch(e){}
+  try{ if(localStorage.getItem('jarvis-sidebar-collapsed') === '1'){ setSidebarCollapsed(true); } }catch(e){}
 
-  // view switching
+  /* ---------------- view switching ---------------- */
   var navMapa = document.getElementById('nav-mapa');
   var navPainel = document.getElementById('nav-painel');
   var painelView = document.getElementById('painel-view');
   var mapView = document.getElementById('map-view');
-
   function setView(view){
     if(view === 'mapa'){
       mapView.classList.add('is-active');
       painelView.classList.add('is-hidden');
       navMapa.classList.add('is-active');
       navPainel.classList.remove('is-active');
+      if(map){ setTimeout(function(){ map.invalidateSize(); }, 0); }
     } else {
       mapView.classList.remove('is-active');
       painelView.classList.remove('is-hidden');
@@ -782,78 +781,553 @@
       btn.classList.add('is-active');
     });
   });
-
-  // scrollspy for sub nav
-  var sections = ['alertas','dist-status','cumprimento-uf','trechos','marcadores']
-    .map(function(id){ return document.getElementById(id); }).filter(Boolean);
+  var sections = ['alertas','dist-status','cumprimento-uf','trechos','marcadores'].map(function(id){ return document.getElementById(id); }).filter(Boolean);
   if('IntersectionObserver' in window){
     var io = new IntersectionObserver(function(entries){
       entries.forEach(function(entry){
-        if(entry.isIntersecting){
-          subButtons.forEach(function(b){
-            b.classList.toggle('is-active', b.dataset.target === entry.target.id);
-          });
-        }
+        if(entry.isIntersecting){ subButtons.forEach(function(b){ b.classList.toggle('is-active', b.dataset.target === entry.target.id); }); }
       });
     }, {rootMargin:'-45% 0px -50% 0px'});
     sections.forEach(function(s){ io.observe(s); });
   }
 
-  // map color toggle
+  /* ---------------- filters ---------------- */
+  var fUf = document.getElementById('f-uf');
+  var fPraca = document.getElementById('f-praca');
+  var fTipo = document.getElementById('f-tipo');
+  var fStatus = document.getElementById('f-status');
+  var fBusca = document.getElementById('f-busca');
+  [fUf, fPraca, fTipo, fStatus].forEach(function(el){ el.addEventListener('change', renderTable); });
+  fBusca.addEventListener('input', renderTable);
+
+  function renderFilterOptions(){
+    var ufs = Array.from(new Set(state.trechos.map(function(t){ return t.uf; }).filter(Boolean))).sort();
+    var pracas = Array.from(new Set(state.trechos.map(function(t){ return t.praca; }).filter(Boolean))).sort();
+    var prevUf = fUf.value, prevPraca = fPraca.value;
+    fUf.innerHTML = '<option value="">Todas</option>' + ufs.map(function(u){ return '<option>' + esc(u) + '</option>'; }).join('');
+    fPraca.innerHTML = '<option value="">Todas</option>' + pracas.map(function(p){ return '<option>' + esc(p) + '</option>'; }).join('');
+    if(ufs.indexOf(prevUf) !== -1) fUf.value = prevUf;
+    if(pracas.indexOf(prevPraca) !== -1) fPraca.value = prevPraca;
+  }
+
+  /* ---------------- banner ---------------- */
+  function renderBanner(){
+    var banner = document.getElementById('banner');
+    var total = state.trechos.length + state.marcadores.length;
+    var hasExemplo = state.trechos.some(function(t){ return t.isExemplo; }) || state.marcadores.some(function(m){ return m.isExemplo; });
+    if(total === 0){
+      banner.className = 'banner warn';
+      banner.innerHTML = '<span class="bdot"></span>Nenhum dado cadastrado. Importe um KMZ/KML para começar.';
+    } else if(hasExemplo){
+      banner.className = 'banner';
+      banner.innerHTML = '<span class="bdot"></span>Exibindo dados de exemplo. Importe um KMZ/KML para substituir.<button id="btn-clear-exemplo">Limpar dados de exemplo</button>';
+      document.getElementById('btn-clear-exemplo').addEventListener('click', function(){
+        state.trechos = []; state.marcadores = []; state.batches = [];
+        saveState(); renderAll();
+        showToast('Dados de exemplo removidos');
+      });
+    } else {
+      banner.style.display = 'none';
+      return;
+    }
+    banner.style.display = 'flex';
+  }
+
+  /* ---------------- KPIs ---------------- */
+  function renderKpis(){
+    var el = document.getElementById('kpi-strip');
+    var trechos = state.trechos;
+    var total = trechos.length;
+    var statuses = trechos.map(computeStatus);
+    var emDia = statuses.filter(function(s){ return s === 'Em dia'; }).length;
+    var atencao = statuses.filter(function(s){ return s === 'Atenção'; }).length;
+    var vencido = statuses.filter(function(s){ return s === 'Vencido'; }).length;
+    var kmTotal = trechos.reduce(function(a, t){ return a + t.km; }, 0);
+    var pctEmDia = total ? Math.round(emDia / total * 100) : 0;
+    el.innerHTML =
+      '<div class="kpi"><div class="kpi-label">Trechos monitorados</div><div class="kpi-value v-ink num">' + total + '</div><div class="kpi-sub num">' + fmtKm(kmTotal) + ' km</div></div>' +
+      '<div class="kpi"><div class="kpi-label">Em dia</div><div class="kpi-value v-good num">' + pctEmDia + '%</div><div class="kpi-sub num">' + emDia + ' trechos</div></div>' +
+      '<div class="kpi"><div class="kpi-label">Km monitorados</div><div class="kpi-value v-ink num">' + fmtKm(kmTotal) + '</div><div class="kpi-sub">backbone + acesso</div></div>' +
+      '<div class="kpi"><div class="kpi-label">Vencendo &le;7 dias</div><div class="kpi-value v-warn num">' + atencao + '</div><div class="kpi-sub">aten&ccedil;&atilde;o</div></div>' +
+      '<div class="kpi"><div class="kpi-label">Vencidos</div><div class="kpi-value v-crit num">' + vencido + '</div><div class="kpi-sub">a&ccedil;&atilde;o imediata</div></div>' +
+      '<div class="kpi"><div class="kpi-label">Ocorr&ecirc;ncias (30d)</div><div class="kpi-value v-ink num">0</div><div class="kpi-sub">sem registros ainda</div></div>';
+  }
+
+  /* ---------------- donut ---------------- */
+  function renderDonut(){
+    var el = document.getElementById('donut-wrap');
+    var trechos = state.trechos;
+    var total = trechos.length;
+    var statuses = trechos.map(computeStatus);
+    var emDia = statuses.filter(function(s){ return s === 'Em dia'; }).length;
+    var atencao = statuses.filter(function(s){ return s === 'Atenção'; }).length;
+    var vencido = statuses.filter(function(s){ return s === 'Vencido'; }).length;
+
+    if(total === 0){
+      el.innerHTML = '<div class="empty-note">Sem trechos cadastrados ainda.</div>';
+      return;
+    }
+    var C = 2 * Math.PI * 54;
+    var gap = 3;
+    var lenEd = C * emDia / total, lenAt = C * atencao / total, lenVe = C * vencido / total;
+    var offAt = lenEd, offVe = lenEd + lenAt;
+    var pct = Math.round(emDia / total * 100);
+    el.innerHTML =
+      '<svg width="140" height="140" viewBox="0 0 140 140" role="img" aria-label="Distribuição de trechos por status: ' + pct + '% em dia">' +
+        '<g transform="rotate(-90 70 70)">' +
+          '<circle cx="70" cy="70" r="54" fill="none" stroke="var(--surface-3)" stroke-width="16"></circle>' +
+          (emDia ? '<circle cx="70" cy="70" r="54" fill="none" stroke="var(--good)" stroke-width="16" stroke-dasharray="' + Math.max(lenEd - gap, 0) + ' ' + C + '" stroke-dashoffset="0"></circle>' : '') +
+          (atencao ? '<circle cx="70" cy="70" r="54" fill="none" stroke="var(--warn)" stroke-width="16" stroke-dasharray="' + Math.max(lenAt - gap, 0) + ' ' + C + '" stroke-dashoffset="-' + offAt + '"></circle>' : '') +
+          (vencido ? '<circle cx="70" cy="70" r="54" fill="none" stroke="var(--crit)" stroke-width="16" stroke-dasharray="' + Math.max(lenVe - gap, 0) + ' ' + C + '" stroke-dashoffset="-' + offVe + '"></circle>' : '') +
+        '</g>' +
+        '<text x="70" y="66" text-anchor="middle" class="donut-center-label" fill="var(--ink)" style="font-family:Calibri,\'Segoe UI\',Helvetica,Arial,sans-serif;">' + pct + '%</text>' +
+        '<text x="70" y="82" text-anchor="middle" class="donut-center-sub" fill="var(--ink-3)" style="font-family:Calibri,\'Segoe UI\',Helvetica,Arial,sans-serif;">EM DIA</text>' +
+      '</svg>' +
+      '<div class="legend">' +
+        '<div class="legend-row"><span class="sw" style="background:var(--good)"></span><span class="lbl">Em dia</span><span class="val num">' + emDia + '</span></div>' +
+        '<div class="legend-row"><span class="sw" style="background:var(--warn)"></span><span class="lbl">Aten&ccedil;&atilde;o (&le;7d)</span><span class="val num">' + atencao + '</span></div>' +
+        '<div class="legend-row"><span class="sw" style="background:var(--crit)"></span><span class="lbl">Vencido</span><span class="val num">' + vencido + '</span></div>' +
+      '</div>';
+  }
+
+  /* ---------------- bar chart % cumprimento por UF ---------------- */
+  function renderBarChart(){
+    var el = document.getElementById('bar-rows');
+    var scaleEl = document.getElementById('bar-scale');
+    var byUf = {};
+    state.trechos.forEach(function(t){
+      if(!t.uf) return;
+      byUf[t.uf] = byUf[t.uf] || {total:0, emDia:0};
+      byUf[t.uf].total++;
+      if(computeStatus(t) === 'Em dia') byUf[t.uf].emDia++;
+    });
+    var ufs = Object.keys(byUf);
+    if(!ufs.length){
+      el.innerHTML = '<div class="empty-note" style="padding:0;">Sem trechos com UF definida.</div>';
+      scaleEl.style.display = 'none';
+      return;
+    }
+    var rows = ufs.map(function(uf){ return {uf: uf, pct: Math.round(byUf[uf].emDia / byUf[uf].total * 100)}; });
+    rows.sort(function(a, b){ return a.pct - b.pct; });
+    el.innerHTML = rows.map(function(r){
+      return '<div class="bar-row"><span class="uf">' + esc(r.uf) + '</span><div class="bar-track"><div class="bar-fill" style="width:' + r.pct + '%"></div></div><span class="pct num">' + r.pct + '%</span></div>';
+    }).join('');
+    scaleEl.style.display = 'flex';
+  }
+
+  /* ---------------- alerts ---------------- */
+  function renderAlerts(){
+    var el = document.getElementById('alert-list');
+    var items = state.trechos.map(function(t){ return {t: t, rem: remainingDays(t)}; })
+      .filter(function(x){ return x.rem <= 14; })
+      .sort(function(a, b){ return a.rem - b.rem; });
+    if(!items.length){
+      el.innerHTML = '<div class="empty-note">Nenhum trecho vencido ou vencendo nos próximos 14 dias.</div>';
+      return;
+    }
+    el.innerHTML = items.map(function(x){
+      var vencido = x.rem < 0;
+      var pillClass = vencido ? 'pill-crit' : 'pill-warn';
+      var pillLabel = vencido ? 'Vencido' : 'Atenção';
+      var daysLabel = vencido ? 'há ' + Math.abs(x.rem) + ' dias' : 'vence em ' + x.rem + ' dias';
+      return '<div class="alert-row">' +
+        '<span class="pill ' + pillClass + '">' + pillLabel + '</span>' +
+        '<span class="name">' + esc(x.t.nome) + '</span>' +
+        '<span class="meta">' + esc(x.t.tipo) + '</span>' +
+        '<span class="meta num">' + daysLabel + '</span>' +
+        '<span class="meta">' + esc(x.t.praca || '—') + ' / ' + esc(x.t.uf || '—') + '</span>' +
+      '</div>';
+    }).join('');
+  }
+
+  /* ---------------- trechos table ---------------- */
+  function renderTable(){
+    renderFilterOptions();
+    var body = document.getElementById('tbl-trechos-body');
+    var uf = fUf.value, praca = fPraca.value, tipo = fTipo.value, status = fStatus.value;
+    var busca = fBusca.value.trim().toLowerCase();
+    var rows = state.trechos.filter(function(t){
+      if(uf && t.uf !== uf) return false;
+      if(praca && t.praca !== praca) return false;
+      if(tipo && t.tipo !== tipo) return false;
+      if(status && computeStatus(t) !== status) return false;
+      if(busca && t.nome.toLowerCase().indexOf(busca) === -1) return false;
+      return true;
+    });
+    document.getElementById('trechos-count').textContent = 'mostrando ' + rows.length + ' de ' + state.trechos.length;
+    if(!rows.length){
+      body.innerHTML = '<tr><td colspan="9" class="empty-note">Nenhum trecho encontrado com esses filtros.</td></tr>';
+      return;
+    }
+    body.innerHTML = rows.map(function(t){
+      var s = computeStatus(t);
+      return '<tr>' +
+        '<td>' + esc(t.nome) + '</td>' +
+        '<td><span class="type-chip">' + esc(t.tipo) + '</span></td>' +
+        '<td>' + esc(t.uf || '—') + '</td>' +
+        '<td>' + esc(t.praca || '—') + '</td>' +
+        '<td class="num">' + fmtKm(t.km) + '</td>' +
+        '<td class="num">' + t.cicloDias + 'd</td>' +
+        '<td><span class="pill ' + statusPillClass(s) + '">' + esc(s) + '</span></td>' +
+        '<td class="num">' + (t.ultimaPrevencao ? fmtDateBR(t.ultimaPrevencao) : '—') + '</td>' +
+        '<td><div class="row-actions"><button data-toast="Editar trecho">Editar</button><button class="danger" data-toast="Excluir trecho">Excluir</button></div></td>' +
+      '</tr>';
+    }).join('');
+    body.querySelectorAll('[data-toast]').forEach(function(el){
+      el.addEventListener('click', function(){ showToast(el.dataset.toast + ' — disponível na versão futura'); });
+    });
+  }
+
+  /* ---------------- marcadores grid ---------------- */
+  function renderMarkers(){
+    var el = document.getElementById('marker-grid');
+    document.getElementById('marcadores-count').textContent = state.marcadores.length + ' no total';
+    if(!state.marcadores.length){
+      el.innerHTML = '<div class="empty-note">Nenhum marcador cadastrado.</div>';
+      return;
+    }
+    var colorVar = {CEO:'var(--el-ceo)', CTO:'var(--el-cto)', CTOE:'var(--el-ctoe)'};
+    el.innerHTML = state.marcadores.map(function(m){
+      return '<div class="marker-card">' +
+        '<span class="marker-tag" style="background:' + colorVar[m.elemento] + '">' + m.elemento + '</span>' +
+        '<span class="marker-name">' + esc(m.nome) + '</span>' +
+        '<span class="marker-loc">' + esc(m.praca || '—') + ' / ' + esc(m.uf || '—') + '</span>' +
+      '</div>';
+    }).join('');
+  }
+
+  /* ---------------- map ---------------- */
+  var map = null, trechoLayer = null, markerLayer = null, mapMode = 'status';
+  var mapAvailable = typeof L !== 'undefined';
+  if(mapAvailable){
+    try{
+      map = L.map('leaflet-map', {scrollWheelZoom:true}).setView([-3.4, -49.5], 5);
+      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        maxZoom: 18,
+        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+      }).addTo(map);
+      trechoLayer = L.layerGroup().addTo(map);
+      markerLayer = L.layerGroup().addTo(map);
+    }catch(e){ mapAvailable = false; map = null; }
+  }
+  if(!mapAvailable){
+    document.getElementById('leaflet-map').innerHTML = '<div class="empty-note">Não foi possível carregar as bibliotecas de mapa (Leaflet). Verifique a conexão ou bloqueios de rede/antivírus — o restante do painel (tabelas, KPIs) continua funcionando normalmente.</div>';
+  }
+
   var mapToggle = document.getElementById('map-toggle');
-  var linesStatus = document.getElementById('lines-status');
-  var linesArquivo = document.getElementById('lines-arquivo');
-  var legendStatus = document.getElementById('legend-status');
-  var legendArquivo = document.getElementById('legend-arquivo');
   mapToggle.addEventListener('click', function(e){
     var btn = e.target.closest('button');
     if(!btn) return;
     mapToggle.querySelectorAll('button').forEach(function(b){ b.classList.remove('is-active'); });
     btn.classList.add('is-active');
-    var byFile = btn.dataset.mode === 'arquivo';
-    linesStatus.style.display = byFile ? 'none' : '';
-    linesArquivo.style.display = byFile ? '' : 'none';
-    legendStatus.style.display = byFile ? 'none' : '';
-    legendArquivo.style.display = byFile ? '' : 'none';
+    mapMode = btn.dataset.mode;
+    renderMap();
   });
 
-  // toast
-  var toast = document.getElementById('toast');
-  var toastTimer;
-  document.querySelectorAll('[data-toast]').forEach(function(el){
-    el.addEventListener('click', function(){
-      toast.textContent = el.dataset.toast + ' — disponível na versão funcional';
-      toast.classList.add('is-visible');
-      clearTimeout(toastTimer);
-      toastTimer = setTimeout(function(){ toast.classList.remove('is-visible'); }, 2200);
-    });
-  });
+  function renderMap(){
+    document.getElementById('map-summary').textContent = state.trechos.length + ' trechos · ' + state.marcadores.length + ' marcadores';
+    var legendStatus = document.getElementById('legend-status');
+    var legendArquivo = document.getElementById('legend-arquivo');
+    if(mapMode === 'arquivo'){
+      legendStatus.style.display = 'none';
+      var counts = {};
+      state.trechos.concat(state.marcadores).forEach(function(item){
+        var key = item.batchId || '__none__';
+        counts[key] = (counts[key] || 0) + 1;
+      });
+      var rowsHtml = Object.keys(counts).map(function(key){
+        var batchId = key === '__none__' ? null : key;
+        return '<div class="legend-row"><span class="sw" style="background:' + batchColor(batchId) + '"></span><span class="lbl">' + esc(batchLabel(batchId)) + '</span><span class="val num">' + counts[key] + '</span></div>';
+      }).join('');
+      legendArquivo.innerHTML = '<h3>Arquivo de origem</h3>' + (rowsHtml || '<div class="legend-row"><span class="lbl">Sem dados</span></div>');
+      legendArquivo.style.display = 'block';
+    } else {
+      legendStatus.style.display = 'block';
+      legendArquivo.style.display = 'none';
+    }
 
-  // live table filter
-  var fUf = document.getElementById('f-uf');
-  var fTipo = document.getElementById('f-tipo');
-  var fStatus = document.getElementById('f-status');
-  var fBusca = document.getElementById('f-busca');
-  var rows = Array.prototype.slice.call(document.querySelectorAll('#tbl-trechos tbody tr'));
-  var countEl = document.getElementById('trechos-count');
+    if(!mapAvailable) return;
+    trechoLayer.clearLayers();
+    markerLayer.clearLayers();
+    var bounds = [];
+    var withGeo = 0;
 
-  function applyFilters(){
-    var uf = fUf.value, tipo = fTipo.value, status = fStatus.value;
-    var busca = fBusca.value.trim().toLowerCase();
-    var visible = 0;
-    rows.forEach(function(row){
-      var match = true;
-      if(uf && row.dataset.uf !== uf) match = false;
-      if(tipo && row.dataset.tipo !== tipo) match = false;
-      if(status && row.dataset.status !== status) match = false;
-      if(busca && row.dataset.nome.toLowerCase().indexOf(busca) === -1) match = false;
-      row.style.display = match ? '' : 'none';
-      if(match) visible++;
+    state.trechos.forEach(function(t){
+      if(!t.geo || t.geo.length < 2) return;
+      withGeo++;
+      var color = mapMode === 'arquivo' ? batchColor(t.batchId) : statusColor(computeStatus(t));
+      var poly = L.polyline(t.geo, {color: color, weight: 4, opacity: 0.9, lineCap: 'round'});
+      poly.bindTooltip(esc(t.nome) + ' · ' + fmtKm(t.km) + ' km · ' + computeStatus(t));
+      poly.addTo(trechoLayer);
+      t.geo.forEach(function(pt){ bounds.push(pt); });
     });
-    countEl.textContent = 'mostrando ' + visible + ' de 128';
+
+    var elColorVar = {CEO:'#7C5CFC', CTO:'#1476C9', CTOE:'#0E9C8B'};
+    state.marcadores.forEach(function(m){
+      if(m.lat == null || m.lon == null) return;
+      var color = mapMode === 'arquivo' ? batchColor(m.batchId) : elColorVar[m.elemento];
+      var circle = L.circleMarker([m.lat, m.lon], {radius: 6, color: '#fff', weight: 2, fillColor: color, fillOpacity: 1});
+      circle.bindTooltip('<span class="marker-plate" style="background:' + color + '">' + m.elemento + '</span>', {permanent: true, direction: 'right', offset: [6, 0], className: 'plate-tooltip'});
+      circle.addTo(markerLayer);
+      bounds.push([m.lat, m.lon]);
+    });
+
+    var noteEl = document.getElementById('map-empty-note');
+    if(withGeo === 0){
+      noteEl.style.display = 'block';
+      noteEl.textContent = state.trechos.length ? 'Nenhum trecho com geometria de linha — importe um KMZ/KML para plotar trechos no mapa.' : 'Sem trechos cadastrados.';
+    } else {
+      noteEl.style.display = 'none';
+    }
+
+    if(bounds.length){
+      try{ map.fitBounds(bounds, {padding: [30, 30], maxZoom: 12}); }catch(e){}
+    }
   }
-  [fUf, fTipo, fStatus].forEach(function(el){ el.addEventListener('change', applyFilters); });
-  fBusca.addEventListener('input', applyFilters);
+
+  /* ---------------- KML / KMZ parsing ---------------- */
+  function haversineKm(coords){
+    var total = 0, R = 6371;
+    for(var i = 1; i < coords.length; i++){
+      var lat1 = coords[i-1][0], lon1 = coords[i-1][1], lat2 = coords[i][0], lon2 = coords[i][1];
+      var dLat = (lat2 - lat1) * Math.PI / 180, dLon = (lon2 - lon1) * Math.PI / 180;
+      var a = Math.sin(dLat/2) * Math.sin(dLat/2) + Math.cos(lat1 * Math.PI/180) * Math.cos(lat2 * Math.PI/180) * Math.sin(dLon/2) * Math.sin(dLon/2);
+      total += R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+    }
+    return total;
+  }
+  function parseCoordText(text){
+    return text.trim().split(/\s+/).filter(Boolean).map(function(tuple){
+      var parts = tuple.split(',').map(Number);
+      return [parts[1], parts[0]]; // -> [lat, lon]
+    }).filter(function(p){ return !isNaN(p[0]) && !isNaN(p[1]); });
+  }
+  function extendedDataValue(pm, keys){
+    var out = [];
+    var dataEls = pm.getElementsByTagName('Data');
+    for(var i = 0; i < dataEls.length; i++){
+      var n = (dataEls[i].getAttribute('name') || '').toLowerCase();
+      if(keys.indexOf(n) !== -1){
+        var v = dataEls[i].getElementsByTagName('value')[0];
+        if(v) out.push(v.textContent);
+      }
+    }
+    var simpleEls = pm.getElementsByTagName('SimpleData');
+    for(var j = 0; j < simpleEls.length; j++){
+      var n2 = (simpleEls[j].getAttribute('name') || '').toLowerCase();
+      if(keys.indexOf(n2) !== -1) out.push(simpleEls[j].textContent);
+    }
+    return out.join(' ');
+  }
+  function detectTipo(haystack){ return /backbone/i.test(haystack) ? 'Backbone' : 'Acesso'; }
+  function detectElemento(haystack){
+    if(/ctoe/i.test(haystack)) return 'CTOE';
+    if(/ceo/i.test(haystack)) return 'CEO';
+    if(/\bcto\b/i.test(haystack)) return 'CTO';
+    return null;
+  }
+  function parseKmlDoc(xmlDoc, batchId, seedIdx){
+    var placemarks = xmlDoc.getElementsByTagName('Placemark');
+    var trechos = [], marcadores = [], ignorados = 0;
+    for(var i = 0; i < placemarks.length; i++){
+      var pm = placemarks[i];
+      var nameEl = pm.getElementsByTagName('name')[0];
+      var nome = nameEl ? nameEl.textContent.trim() : ('Sem nome ' + (i + 1));
+      var extra = extendedDataValue(pm, ['elemento','tipo_elemento','equipamento','tipo']);
+      var haystack = nome + ' ' + extra;
+      var lineEl = pm.getElementsByTagName('LineString')[0];
+      var pointEl = pm.getElementsByTagName('Point')[0];
+      var uid = batchId + '-' + seedIdx + '-' + i;
+
+      if(lineEl){
+        var coordEl = lineEl.getElementsByTagName('coordinates')[0];
+        var coords = coordEl ? parseCoordText(coordEl.textContent) : [];
+        var km = coords.length > 1 ? haversineKm(coords) : 0;
+        var tipo = detectTipo(haystack);
+        trechos.push({
+          id: 't-' + uid, nome: nome, tipo: tipo, uf: '', praca: '',
+          km: Math.round(km * 10) / 10, cicloDias: tipo === 'Backbone' ? 30 : 60,
+          ultimaPrevencao: todayISO(), batchId: batchId, isExemplo: false, geo: coords
+        });
+      } else if(pointEl){
+        var elemento = detectElemento(haystack);
+        if(elemento){
+          var coordEl2 = pointEl.getElementsByTagName('coordinates')[0];
+          var xy = coordEl2 ? coordEl2.textContent.trim().split(',').map(Number) : [null, null];
+          marcadores.push({
+            id: 'm-' + uid, nome: nome, elemento: elemento, uf: '', praca: '',
+            lat: isNaN(xy[1]) ? null : xy[1], lon: isNaN(xy[0]) ? null : xy[0],
+            batchId: batchId, isExemplo: false
+          });
+        } else { ignorados++; }
+      }
+    }
+    return {trechos: trechos, marcadores: marcadores, ignorados: ignorados};
+  }
+
+  /* ---------------- import modal ---------------- */
+  var overlay = document.getElementById('import-overlay');
+  var dropzone = document.getElementById('dropzone');
+  var fileInput = document.getElementById('file-input');
+  var warningEl = document.getElementById('import-warning');
+  var previewEl = document.getElementById('import-preview');
+  var previewSummaryEl = document.getElementById('preview-summary');
+  var previewTrechosBody = document.getElementById('preview-trechos-body');
+  var previewMarcadoresBody = document.getElementById('preview-marcadores-body');
+  var confirmBtn = document.getElementById('import-confirm');
+  var pending = null;
+
+  function openImport(){
+    pending = null;
+    warningEl.style.display = 'none';
+    previewEl.style.display = 'none';
+    confirmBtn.disabled = true;
+    fileInput.value = '';
+    overlay.classList.remove('is-hidden');
+  }
+  function closeImport(){ overlay.classList.add('is-hidden'); }
+  document.getElementById('btn-import-1').addEventListener('click', openImport);
+  document.getElementById('btn-import-2').addEventListener('click', openImport);
+  document.getElementById('import-close').addEventListener('click', closeImport);
+  document.getElementById('import-cancel').addEventListener('click', closeImport);
+  overlay.addEventListener('click', function(e){ if(e.target === overlay) closeImport(); });
+
+  dropzone.addEventListener('click', function(){ fileInput.click(); });
+  dropzone.addEventListener('keydown', function(e){ if(e.key === 'Enter' || e.key === ' '){ fileInput.click(); } });
+  ['dragenter','dragover'].forEach(function(ev){
+    dropzone.addEventListener(ev, function(e){ e.preventDefault(); dropzone.classList.add('is-drag'); });
+  });
+  ['dragleave','drop'].forEach(function(ev){
+    dropzone.addEventListener(ev, function(e){ e.preventDefault(); dropzone.classList.remove('is-drag'); });
+  });
+  dropzone.addEventListener('drop', function(e){ handleFiles(e.dataTransfer.files); });
+  fileInput.addEventListener('change', function(){ handleFiles(fileInput.files); });
+
+  function showWarning(msg){ warningEl.style.display = 'flex'; warningEl.innerHTML = '<span class="bdot"></span>' + msg; }
+
+  function handleFiles(fileList){
+    var files = Array.prototype.slice.call(fileList || []);
+    if(!files.length) return;
+    warningEl.style.display = 'none';
+    var allTrechos = [], allMarcadores = [], allIgnorados = 0, newBatches = [];
+    var jobs = files.map(function(file, idx){
+      var lower = file.name.toLowerCase();
+      var batchId = 'b' + Date.now() + '-' + idx;
+      var color = BATCH_PALETTE[(state.batches.length + newBatches.length) % BATCH_PALETTE.length];
+      newBatches.push({id: batchId, nome: file.name, cor: color});
+
+      if(lower.endsWith('.kmz')){
+        if(typeof JSZip === 'undefined'){
+          showWarning('Não foi possível carregar o suporte a .kmz (JSZip). Tente importar um .kml puro, ou verifique bloqueios de rede/antivírus.');
+          return Promise.resolve();
+        }
+        return JSZip.loadAsync(file).then(function(zip){
+          var entryName = Object.keys(zip.files).filter(function(n){ return n.toLowerCase().endsWith('.kml'); })[0];
+          if(!entryName){ showWarning('O arquivo "' + esc(file.name) + '" não contém um .kml válido.'); return; }
+          return zip.files[entryName].async('string').then(function(text){
+            var xmlDoc = new DOMParser().parseFromString(text, 'text/xml');
+            var res = parseKmlDoc(xmlDoc, batchId, idx);
+            allTrechos = allTrechos.concat(res.trechos);
+            allMarcadores = allMarcadores.concat(res.marcadores);
+            allIgnorados += res.ignorados;
+          });
+        }).catch(function(){ showWarning('Não foi possível ler "' + esc(file.name) + '" como .kmz.'); });
+      } else if(lower.endsWith('.kml')){
+        return file.text().then(function(text){
+          var xmlDoc = new DOMParser().parseFromString(text, 'text/xml');
+          var res = parseKmlDoc(xmlDoc, batchId, idx);
+          allTrechos = allTrechos.concat(res.trechos);
+          allMarcadores = allMarcadores.concat(res.marcadores);
+          allIgnorados += res.ignorados;
+        }).catch(function(){ showWarning('Não foi possível ler "' + esc(file.name) + '" como .kml.'); });
+      } else {
+        showWarning('Formato não suportado: "' + esc(file.name) + '" (use .kmz ou .kml).');
+        return Promise.resolve();
+      }
+    });
+
+    Promise.all(jobs).then(function(){
+      if(!allTrechos.length && !allMarcadores.length){
+        if(warningEl.style.display !== 'flex'){
+          showWarning('Nenhum trecho ou marcador válido foi encontrado nesses arquivos.' + (allIgnorados ? (' ' + allIgnorados + ' ponto(s) ignorado(s) por não serem CEO/CTO/CTOE.') : ''));
+        }
+        return;
+      }
+      pending = {trechos: allTrechos, marcadores: allMarcadores, ignorados: allIgnorados, batches: newBatches};
+      renderPreview();
+    });
+  }
+
+  function renderPreview(){
+    previewEl.style.display = 'block';
+    confirmBtn.disabled = false;
+    previewSummaryEl.textContent = pending.trechos.length + ' trecho(s) e ' + pending.marcadores.length + ' marcador(es) detectados' +
+      (pending.ignorados ? (' · ' + pending.ignorados + ' ponto(s) ignorado(s) (não identificados como CEO/CTO/CTOE)') : '') +
+      '. Revise e corrija os campos abaixo antes de confirmar.';
+
+    previewTrechosBody.innerHTML = pending.trechos.length ? pending.trechos.map(function(t, i){
+      return '<tr>' +
+        '<td>' + esc(t.nome) + '</td>' +
+        '<td><select class="mini-input" data-kind="trecho" data-idx="' + i + '" data-field="tipo">' +
+          '<option ' + (t.tipo === 'Backbone' ? 'selected' : '') + '>Backbone</option>' +
+          '<option ' + (t.tipo === 'Acesso' ? 'selected' : '') + '>Acesso</option>' +
+        '</select></td>' +
+        '<td><select class="mini-input" data-kind="trecho" data-idx="' + i + '" data-field="uf">' +
+          '<option value=""></option>' + UF_LIST.map(function(u){ return '<option ' + (t.uf === u ? 'selected' : '') + '>' + u + '</option>'; }).join('') +
+        '</select></td>' +
+        '<td><input class="mini-input" data-kind="trecho" data-idx="' + i + '" data-field="praca" value="' + esc(t.praca) + '" style="width:110px;"></td>' +
+        '<td class="num">' + fmtKm(t.km) + '</td>' +
+        '<td><input class="mini-input" data-kind="trecho" data-idx="' + i + '" data-field="cicloDias" type="number" min="1" value="' + t.cicloDias + '" style="width:60px;"></td>' +
+      '</tr>';
+    }).join('') : '<tr><td colspan="6" class="empty-note">Nenhum trecho (linha) detectado.</td></tr>';
+
+    previewMarcadoresBody.innerHTML = pending.marcadores.length ? pending.marcadores.map(function(m, i){
+      return '<tr>' +
+        '<td>' + esc(m.nome) + '</td>' +
+        '<td><select class="mini-input" data-kind="marcador" data-idx="' + i + '" data-field="elemento">' +
+          ['CEO','CTO','CTOE'].map(function(opt){ return '<option ' + (m.elemento === opt ? 'selected' : '') + '>' + opt + '</option>'; }).join('') +
+        '</select></td>' +
+        '<td><select class="mini-input" data-kind="marcador" data-idx="' + i + '" data-field="uf">' +
+          '<option value=""></option>' + UF_LIST.map(function(u){ return '<option ' + (m.uf === u ? 'selected' : '') + '>' + u + '</option>'; }).join('') +
+        '</select></td>' +
+        '<td><input class="mini-input" data-kind="marcador" data-idx="' + i + '" data-field="praca" value="' + esc(m.praca) + '" style="width:110px;"></td>' +
+      '</tr>';
+    }).join('') : '<tr><td colspan="4" class="empty-note">Nenhum marcador CEO/CTO/CTOE detectado.</td></tr>';
+
+    document.querySelectorAll('#preview-trechos-body [data-field], #preview-marcadores-body [data-field]').forEach(function(input){
+      input.addEventListener('input', function(){
+        var idx = Number(input.dataset.idx), field = input.dataset.field;
+        var target = input.dataset.kind === 'trecho' ? pending.trechos[idx] : pending.marcadores[idx];
+        target[field] = field === 'cicloDias' ? (Number(input.value) || target[field]) : input.value;
+      });
+    });
+  }
+
+  confirmBtn.addEventListener('click', function(){
+    if(!pending) return;
+    state.batches = state.batches.concat(pending.batches);
+    state.trechos = state.trechos.concat(pending.trechos);
+    state.marcadores = state.marcadores.concat(pending.marcadores);
+    var summary = pending.trechos.length + ' trecho(s) e ' + pending.marcadores.length + ' marcador(es) importados';
+    saveState();
+    renderAll();
+    closeImport();
+    showToast(summary);
+  });
+
+  /* ---------------- render all ---------------- */
+  function renderAll(){
+    renderBanner();
+    renderKpis();
+    renderDonut();
+    renderBarChart();
+    renderAlerts();
+    renderTable();
+    renderMarkers();
+    renderMap();
+  }
+  renderAll();
+})();
 </script>
 </body>
 </html>
