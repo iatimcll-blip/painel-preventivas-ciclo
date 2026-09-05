@@ -1225,10 +1225,15 @@
       });
       var rowsHtml = Object.keys(counts).map(function(key){
         var batchId = key === '__none__' ? null : key;
-        return '<div class="legend-row"><span class="sw" style="background:' + batchColor(batchId) + '"></span><span class="lbl">' + esc(batchLabel(batchId)) + '</span><span class="val num">' + counts[key] + '</span></div>';
+        return '<div class="legend-row"><span class="sw" style="background:' + batchColor(batchId) + '"></span><span class="lbl">' + esc(batchLabel(batchId)) + '</span><span class="val num">' + counts[key] + '</span>' +
+          (batchId ? ('<button class="remove-btn" data-delete-batch-map="' + batchId + '" title="Excluir este KMZ e todos os dados importados dele" aria-label="Excluir ' + esc(batchLabel(batchId)) + '" style="font-size:14px;margin-left:2px;">&times;</button>') : '') +
+        '</div>';
       }).join('');
       legendArquivo.innerHTML = '<h3>Arquivo de origem</h3>' + (rowsHtml || '<div class="legend-row"><span class="lbl">Sem dados</span></div>');
       legendArquivo.style.display = 'block';
+      legendArquivo.querySelectorAll('[data-delete-batch-map]').forEach(function(btn){
+        btn.addEventListener('click', function(){ deleteBatch(btn.dataset.deleteBatchMap); });
+      });
     } else {
       legendStatus.style.display = 'block';
       legendArquivo.style.display = 'none';
